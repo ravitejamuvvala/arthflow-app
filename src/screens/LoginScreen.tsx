@@ -27,7 +27,13 @@ export default function LoginScreen() {
     }
 
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({ email })
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        channel: 'email',
+        shouldCreateUser: true,
+      },
+    })
     setLoading(false)
 
     if (error) {
@@ -39,8 +45,8 @@ export default function LoginScreen() {
   }
 
   const verifyOtp = async () => {
-    if (otp.length < 6) {
-      Alert.alert('Invalid code', 'Please enter the 6-digit code.')
+    if (otp.length < 8) {
+      Alert.alert('Invalid code', 'Please enter the 8-digit code.')
       return
     }
 
@@ -92,7 +98,7 @@ export default function LoginScreen() {
                 : <Text style={styles.btnText}>Send code →</Text>
               }
             </TouchableOpacity>
-            <Text style={styles.hint}>We'll send a 6-digit code to your email</Text>
+            <Text style={styles.hint}>We'll send an 8-digit code to your email</Text>
           </View>
         )}
 
@@ -102,12 +108,12 @@ export default function LoginScreen() {
             <Text style={styles.emailDisplay}>{email}</Text>
             <TextInput
               style={[styles.input, styles.otpInput]}
-              placeholder="123456"
+              placeholder="12345678"
               placeholderTextColor="#4B5563"
               value={otp}
               onChangeText={setOtp}
               keyboardType="number-pad"
-              maxLength={6}
+              maxLength={8}
               autoFocus
             />
             <TouchableOpacity
