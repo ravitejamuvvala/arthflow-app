@@ -1,19 +1,20 @@
 import React, { useState } from 'react'
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 
+import { supabase } from '../lib/supabase'
 import SignUpScreen from './SignUpScreen'
 
-export default function LoginScreen() {
+export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -25,10 +26,19 @@ export default function LoginScreen() {
       return
     }
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) {
-      Alert.alert('Sign in error', error.message)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      console.log('SignIn response:', { data, error })
+      if (error) {
+        setLoading(false)
+        Alert.alert('Sign in error', error.message)
+        return
+      }
+      // Let auth state change in App.js handle session update
+      setLoading(false)
+    } catch (e) {
+      setLoading(false)
+      Alert.alert('Sign in error', e.message || String(e))
     }
   }
 

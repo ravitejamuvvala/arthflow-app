@@ -87,19 +87,19 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
 
         <View style={styles.toggle}>
           <TouchableOpacity
-            style={[styles.toggleBtn, type === 'expense' && styles.toggleActive]}
-            onPress={() => switchType('expense')}
-          >
-            <Text style={[styles.toggleText, type === 'expense' && styles.toggleTextActive]}>
-              Expense
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={[styles.toggleBtn, type === 'income' && styles.toggleActiveGreen]}
             onPress={() => switchType('income')}
           >
             <Text style={[styles.toggleText, type === 'income' && styles.toggleTextActive]}>
               Income
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, type === 'expense' && styles.toggleActive]}
+            onPress={() => switchType('expense')}
+          >
+            <Text style={[styles.toggleText, type === 'expense' && styles.toggleTextActive]}>
+              Expense
             </Text>
           </TouchableOpacity>
         </View>
