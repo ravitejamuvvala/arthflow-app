@@ -43,7 +43,7 @@ export default function LoginScreen({ onLogin }) {
   }
 
   if (showSignUp) {
-    return <SignUpScreen onSignUpSuccess={() => setShowSignUp(false)} />
+    return <SignUpScreen onSignUpSuccess={() => setShowSignUp(false)} onCancel={() => setShowSignUp(false)} />
   }
 
   return (

@@ -12,7 +12,13 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-export default function SignUpScreen({ onSignUpSuccess }) {
+
+type SignUpScreenProps = {
+  onSignUpSuccess?: () => void;
+  onCancel?: () => void;
+};
+
+export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,7 +57,15 @@ export default function SignUpScreen({ onSignUpSuccess }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>Sign Up</Text>
+        <View style={styles.headerRow}>
+          {onCancel && (
+            <TouchableOpacity onPress={onCancel} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>Back</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.logo}>Sign Up</Text>
+          <View style={{ width: 48 }} />
+        </View>
         <View style={styles.form}>
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -75,6 +89,14 @@ export default function SignUpScreen({ onSignUpSuccess }) {
             autoCapitalize="none"
             autoComplete="password"
           />
+          <Text
+            style={[
+              styles.passwordPolicy,
+              password.length > 0 && !validatePassword(password) && styles.passwordPolicyInvalid,
+            ]}
+          >
+            Password must be at least 6 characters, include 1 capital letter, 1 special character, and 1 number.
+          </Text>
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
             onPress={handleSignUp}
@@ -98,14 +120,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  backBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  backBtnText: {
+    color: '#4F8EF7',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   logo: {
     fontWeight: '800',
     fontSize: 32,
     color: '#F1F5F9',
-    marginBottom: 24,
+    marginBottom: 0,
     letterSpacing: -1,
     textAlign: 'center',
   },
+    passwordPolicy: {
+      fontSize: 12,
+      color: '#94A3B8',
+      marginTop: 2,
+      marginBottom: 2,
+    },
+    passwordPolicyInvalid: {
+      color: '#F87171',
+    },
   form: {
     gap: 12,
   },
