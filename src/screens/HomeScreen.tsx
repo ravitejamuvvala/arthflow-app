@@ -16,10 +16,7 @@ type Props = {
 }
 
 export default function HomeScreen({ onAddTransaction }: Props) {
-<<<<<<< HEAD
   const [signingOut, setSigningOut] = useState(false)
-=======
->>>>>>> 8c84840612a0f7dbcee7018bbe6165960e8633ad
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
