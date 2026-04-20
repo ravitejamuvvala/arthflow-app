@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from './src/lib/supabase'
 
 import AddTransactionScreen from './src/screens/AddTransactionScreen'
@@ -50,18 +51,10 @@ export default function App() {
 
       <View style={styles.tabBar}>
         <TouchableOpacity style={[styles.tab, activeTab === 'home' && styles.tabActive]} onPress={() => setActiveTab('home')}>
-          <Text style={styles.tabIcon}>⊞</Text>
+          <Text style={[styles.tabIcon, { fontSize: 28, color: activeTab === 'home' ? '#4F8EF7' : '#475569' }]}>⌂</Text>
           <Text style={[styles.tabLabel, activeTab === 'home' && styles.tabLabelActive]}>Home</Text>
           {activeTab === 'home' && <View style={styles.tabDot} />}
         </TouchableOpacity>
-
-        <View style={styles.tabSpacer} />
-
-        <TouchableOpacity style={styles.addTabBtn} onPress={() => setShowAddTransaction(true)}>
-          <Text style={styles.addTabIcon}>+</Text>
-        </TouchableOpacity>
-
-        <View style={styles.tabSpacer} />
 
         <TouchableOpacity style={[styles.tab, activeTab === 'goals' && styles.tabActive]} onPress={() => setActiveTab('goals')}>
           <Text style={styles.tabIcon}>🎯</Text>
@@ -75,6 +68,11 @@ export default function App() {
           {activeTab === 'plan' && <View style={styles.tabDot} />}
         </TouchableOpacity>
       </View>
+
+      {/* Floating Action Button */}
+      <TouchableOpacity style={styles.fab} onPress={() => setShowAddTransaction(true)}>
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
 
       <Modal visible={showAddTransaction} animationType="slide" presentationStyle="pageSheet">
         <AddTransactionScreen
@@ -99,29 +97,33 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 8,
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 16,
+    justifyContent: 'space-evenly',
+    paddingHorizontal: 0,
+    zIndex: 1,
   },
-  tab: { alignItems: 'center', flex: 1, paddingVertical: 4, minWidth: 60 },
-  tabActive: { },
-  tabSpacer: { width: 8 },
-  tabIcon: { fontSize: 20, marginBottom: 2 },
+  tab: { alignItems: 'center', justifyContent: 'center', minWidth: 60, flex: 1 },
+  tabActive: {},
+  tabIcon: { fontSize: 22, marginBottom: 2 },
   tabLabel: { fontSize: 10, color: '#475569', fontWeight: '600' },
   tabLabelActive: { color: '#4F8EF7' },
   tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#4F8EF7', marginTop: 3 },
-  addTabBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  fab: {
+    position: 'absolute',
+    left: '50%',
+    bottom: 28,
+    transform: [{ translateX: -36 }],
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#4F8EF7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
     shadowColor: '#4F8EF7',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
-    elevation: 8,
+    elevation: 12,
+    zIndex: 10,
   },
-  addTabIcon: { color: '#fff', fontSize: 26, fontWeight: '300', lineHeight: 30 },
+  fabIcon: { color: '#fff', fontSize: 44, fontWeight: '700', lineHeight: 48 },
 })

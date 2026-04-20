@@ -61,7 +61,10 @@ export default function GoalsScreen() {
 
     setSaving(false)
 
-    if (error) { Alert.alert('Error', 'Could not save goal.'); return }
+    if (error) {
+      Alert.alert('Error', `Could not save goal: ${error.message}`)
+      return
+    }
 
     setShowModal(false)
     setName(''); setTargetAmount(''); setTargetDate('')

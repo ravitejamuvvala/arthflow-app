@@ -71,6 +71,7 @@ export default function HomeScreen({ onAddTransaction }: Props) {
     return `₹${Math.round(n)}`
   }
 
+
   if (loading) {
     return (
       <View style={styles.center}>
