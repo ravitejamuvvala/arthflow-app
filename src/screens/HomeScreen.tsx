@@ -16,7 +16,10 @@ type Props = {
 }
 
 export default function HomeScreen({ onAddTransaction }: Props) {
+<<<<<<< HEAD
   const [signingOut, setSigningOut] = useState(false)
+=======
+>>>>>>> 8c84840612a0f7dbcee7018bbe6165960e8633ad
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -79,12 +82,15 @@ export default function HomeScreen({ onAddTransaction }: Props) {
     )
   }
 
+<<<<<<< HEAD
   const handleSignOut = async () => {
     setSigningOut(true)
     await supabase.auth.signOut()
     setSigningOut(false)
   }
 
+=======
+>>>>>>> 8c84840612a0f7dbcee7018bbe6165960e8633ad
   return (
     <ScrollView
       style={styles.container}
@@ -93,6 +99,7 @@ export default function HomeScreen({ onAddTransaction }: Props) {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4F8EF7" />
       }
     >
+<<<<<<< HEAD
       <View style={styles.headerRow}>
         <View style={styles.header}>
           <Text style={styles.greeting}>Good morning, {userName}</Text>
@@ -106,6 +113,16 @@ export default function HomeScreen({ onAddTransaction }: Props) {
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} disabled={signingOut}>
           <Text style={styles.signOutText}>{signingOut ? 'Signing out...' : 'Sign Out'}</Text>
         </TouchableOpacity>
+=======
+      <View style={styles.header}>
+        <Text style={styles.greeting}>Good morning, {userName}</Text>
+        <View style={[styles.statusPill, isOnTrack ? styles.pillGreen : styles.pillAmber]}>
+          <View style={[styles.statusDot, isOnTrack ? styles.dotGreen : styles.dotAmber]} />
+          <Text style={[styles.statusText, isOnTrack ? styles.textGreen : styles.textAmber]}>
+            {isOnTrack ? "You're on track" : 'Needs attention'}
+          </Text>
+        </View>
+>>>>>>> 8c84840612a0f7dbcee7018bbe6165960e8633ad
       </View>
 
       <View style={styles.card}>
@@ -191,9 +208,12 @@ export default function HomeScreen({ onAddTransaction }: Props) {
 }
 
 const styles = StyleSheet.create({
+<<<<<<< HEAD
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   signOutBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1A2233', borderRadius: 8 },
   signOutText: { color: '#F87171', fontWeight: '700', fontSize: 13 },
+=======
+>>>>>>> 8c84840612a0f7dbcee7018bbe6165960e8633ad
   container: { flex: 1, backgroundColor: '#06091A' },
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, backgroundColor: '#06091A', justifyContent: 'center', alignItems: 'center' },
