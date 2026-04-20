@@ -56,6 +56,12 @@ export default function App() {
           {activeTab === 'home' && <View style={styles.tabDot} />}
         </TouchableOpacity>
 
+        <TouchableOpacity style={[styles.tab, styles.addTab]} onPress={() => setShowAddTransaction(true)}>
+          <View style={styles.addTabCircle}>
+            <Text style={styles.addTabIcon}>+</Text>
+          </View>
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.tab, activeTab === 'goals' && styles.tabActive]} onPress={() => setActiveTab('goals')}>
           <Text style={styles.tabIcon}>🎯</Text>
           <Text style={[styles.tabLabel, activeTab === 'goals' && styles.tabLabelActive]}>Goals</Text>
@@ -68,11 +74,6 @@ export default function App() {
           {activeTab === 'plan' && <View style={styles.tabDot} />}
         </TouchableOpacity>
       </View>
-
-      {/* Floating Action Button */}
-      <TouchableOpacity style={styles.fab} onPress={() => setShowAddTransaction(true)}>
-        <Text style={styles.fabIcon}>+</Text>
-      </TouchableOpacity>
 
       <Modal visible={showAddTransaction} animationType="slide" presentationStyle="pageSheet">
         <AddTransactionScreen
@@ -97,33 +98,53 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 8,
     alignItems: 'center',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     paddingHorizontal: 0,
     zIndex: 1,
+    position: 'relative',
   },
   tab: { alignItems: 'center', justifyContent: 'center', minWidth: 60, flex: 1 },
   tabActive: {},
   tabIcon: { fontSize: 22, marginBottom: 2 },
-  tabLabel: { fontSize: 10, color: '#475569', fontWeight: '600' },
+  tabLabel: { fontSize: 13, color: '#475569', fontWeight: '600' },
   tabLabelActive: { color: '#4F8EF7' },
   tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#4F8EF7', marginTop: 3 },
-  fab: {
-    position: 'absolute',
-    left: '50%',
-    bottom: 28,
-    transform: [{ translateX: -36 }],
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#4F8EF7',
+  addTab: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#4F8EF7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 12,
-    zIndex: 10,
+    // No margin or width here; handled by addTabCircle
   },
-  fabIcon: { color: '#fff', fontSize: 44, fontWeight: '700', lineHeight: 48 },
+  addTabCircle: {
+    backgroundColor: '#4F8EF7',
+    borderRadius: 28,
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: '50%',
+    transform: [{ translateX: -28 }],
+    marginTop: -8,
+    // Embossed effect
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
+    zIndex: 2,
+  },
+  addTabIcon: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '900',
+    textShadowColor: '#1E293B',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    marginBottom: 0,
+    marginTop: 0,
+    lineHeight: 32,
+  },
 })

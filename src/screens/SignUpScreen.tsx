@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -9,32 +9,41 @@ import {
     TextInput,
     TouchableOpacity,
     View,
-} from 'react-native'
+} from 'react-native';
+import { supabase } from '../lib/supabase';
 
-import SignUpScreen from './SignUpScreen'
+export default function SignUpScreen({ onSignUpSuccess }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-export default function LoginScreen() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showSignUp, setShowSignUp] = useState(false)
+  const validatePassword = (pw) => {
+    // At least 1 capital, 1 special, 1 number, min 6 chars
+    return /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{6,}$/.test(pw);
+  };
 
-  const handleSignIn = async () => {
-    if (!email.includes('@') || password.length < 6) {
-      Alert.alert('Invalid input', 'Enter a valid email and password (min 6 chars).')
-      return
+  const handleSignUp = async () => {
+    if (!email.includes('@')) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
     }
-    setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
+    if (!validatePassword(password)) {
+      Alert.alert(
+        'Weak password',
+        'Password must be at least 6 characters, include 1 capital letter, 1 special character, and 1 number.'
+      );
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({ email, password });
+    setLoading(false);
     if (error) {
-      Alert.alert('Sign in error', error.message)
+      Alert.alert('Sign up error', error.message);
+    } else {
+      Alert.alert('Success', 'Check your email for a confirmation link.');
+      if (onSignUpSuccess) onSignUpSuccess();
     }
-  }
-
-  if (showSignUp) {
-    return <SignUpScreen onSignUpSuccess={() => setShowSignUp(false)} />
-  }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -42,11 +51,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>
-          Arth<Text style={styles.logoAccent}>Flow</Text>
-        </Text>
-        <Text style={styles.tagline}>Your monthly money operating system</Text>
-
+        <Text style={styles.logo}>Sign Up</Text>
         <View style={styles.form}>
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -72,25 +77,15 @@ export default function LoginScreen() {
           />
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
-            onPress={handleSignIn}
+            onPress={handleSignUp}
             disabled={loading}
           >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.btnText}>Sign In</Text>
-            }
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#475569', marginTop: 8 }]}
-            onPress={() => setShowSignUp(true)}
-            disabled={loading}
-          >
-            <Text style={styles.btnText}>Sign Up</Text>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign Up</Text>}
           </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -105,18 +100,11 @@ const styles = StyleSheet.create({
   },
   logo: {
     fontWeight: '800',
-    fontSize: 36,
+    fontSize: 32,
     color: '#F1F5F9',
-    marginBottom: 8,
+    marginBottom: 24,
     letterSpacing: -1,
-  },
-  logoAccent: {
-    color: '#4F8EF7',
-  },
-  tagline: {
-    fontSize: 15,
-    color: '#94A3B8',
-    marginBottom: 48,
+    textAlign: 'center',
   },
   form: {
     gap: 12,
@@ -125,11 +113,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#F1F5F9',
-    marginBottom: 4,
-  },
-  emailDisplay: {
-    fontSize: 14,
-    color: '#4F8EF7',
     marginBottom: 4,
   },
   input: {
@@ -142,36 +125,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#F1F5F9',
   },
-  otpInput: {
-    fontSize: 24,
-    letterSpacing: 8,
-    textAlign: 'center',
-  },
   btn: {
     backgroundColor: '#4F8EF7',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 12,
   },
   btnDisabled: {
     opacity: 0.6,
   },
   btnText: {
     color: '#fff',
-    fontSize: 16,
     fontWeight: '700',
+    fontSize: 16,
   },
-  hint: {
-    fontSize: 13,
-    color: '#475569',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  back: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-})
+});
