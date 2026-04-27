@@ -1,16 +1,17 @@
 import React, { useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 
+import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import SignUpScreen from './SignUpScreen'
 
@@ -52,9 +53,10 @@ export default function LoginScreen({ onLogin }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>
-          Arth<Text style={styles.logoAccent}>Flow</Text>
-        </Text>
+        <View style={{ alignSelf: 'center', marginBottom: 16 }}>
+          <ArthFlowLogo size={80} />
+        </View>
+        <Text style={styles.logo}>ARTHFLOW</Text>
         <Text style={styles.tagline}>Your monthly money operating system</Text>
 
         <View style={styles.form}>
@@ -62,7 +64,7 @@ export default function LoginScreen({ onLogin }) {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor="#4B5563"
+            placeholderTextColor="#9CA3AF"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -73,7 +75,7 @@ export default function LoginScreen({ onLogin }) {
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#4B5563"
+            placeholderTextColor="#9CA3AF"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -91,7 +93,7 @@ export default function LoginScreen({ onLogin }) {
             }
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#475569', marginTop: 8 }]}
+            style={[styles.btn, { backgroundColor: '#64748B', marginTop: 8 }]}
             onPress={() => setShowSignUp(true)}
             disabled={loading}
           >
@@ -106,27 +108,37 @@ export default function LoginScreen({ onLogin }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#06091A',
+    backgroundColor: '#F8FAFC',
   },
   inner: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  logoImage: {
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
   logo: {
-    fontWeight: '800',
-    fontSize: 36,
-    color: '#F1F5F9',
+    fontWeight: '700',
+    fontSize: 22,
+    color: '#1E293B',
     marginBottom: 8,
-    letterSpacing: -1,
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    fontFamily: 'Manrope_700Bold',
   },
   logoAccent: {
-    color: '#4F8EF7',
+    color: '#1E3A8A',
   },
   tagline: {
     fontSize: 15,
-    color: '#94A3B8',
+    color: '#6B7280',
     marginBottom: 48,
+    textAlign: 'center',
+    fontFamily: 'Manrope_400Regular',
   },
   form: {
     gap: 12,
@@ -134,23 +146,25 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#F1F5F9',
+    color: '#111827',
     marginBottom: 4,
+    fontFamily: 'Manrope_700Bold',
   },
   emailDisplay: {
     fontSize: 14,
-    color: '#4F8EF7',
+    color: '#1E3A8A',
     marginBottom: 4,
   },
   input: {
-    backgroundColor: '#0D1326',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 14,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 16,
     fontSize: 16,
-    color: '#F1F5F9',
+    color: '#111827',
+    fontFamily: 'Manrope_400Regular',
   },
   otpInput: {
     fontSize: 24,
@@ -158,11 +172,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   btn: {
-    backgroundColor: '#4F8EF7',
-    borderRadius: 14,
+    backgroundColor: '#1E3A8A',
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 4,
+    shadowColor: '#1E3A8A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 24,
+    elevation: 6,
   },
   btnDisabled: {
     opacity: 0.6,
@@ -171,16 +190,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'Manrope_700Bold',
   },
   hint: {
     fontSize: 13,
-    color: '#475569',
+    color: '#9CA3AF',
     textAlign: 'center',
     marginTop: 4,
   },
   back: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: '#6B7280',
     textAlign: 'center',
     marginTop: 8,
   },

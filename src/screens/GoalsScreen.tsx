@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-    ActivityIndicator, Alert,
-    KeyboardAvoidingView,
+    ActivityIndicator,
+    Alert,
     Modal,
-    Platform,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -12,274 +11,591 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native'
+import ArthFlowLogo from '../components/ArthFlowLogo'
+import GoalArc from '../components/GoalArc'
 import { supabase } from '../lib/supabase'
 import { Goal } from '../types'
 
+// ─── Design Tokens ──────────────────────────────────────────────────────
+const BLUE     = '#1E3A8A'
+const BLUE_L   = '#DBEAFE'
+const GREEN    = '#22C55E'
+const GREEN_H  = '#16A34A'
+const GREEN_L  = '#DCFCE7'
+const ORANGE   = '#F59E0B'
+const ORANGE_H = '#D97706'
+const ORANGE_L = '#FEF3C7'
+const RED      = '#EF4444'
+const TEAL     = '#14B8A6'
+const TEAL_L   = '#CCFBF1'
+const INDIGO   = '#6366F1'
+const TXT1     = '#111827'
+const TXT2     = '#6B7280'
+const TXT3     = '#9CA3AF'
+const BORDER   = '#E5E7EB'
+const BG_SEC   = '#F1F5F9'
+
+const GOAL_EMOJIS = ['🏠','✈️','🎓','🚗','💍','🛡️','🌅','💻','📱','🏋️','🏖️','🌏','👶','🎸','⛵','🏡','💰','🎯','📈','🌱']
+
+const PRIORITY_CONFIG = {
+  high:   { label: 'High',   color: RED,    bg: '#FEE2E2' },
+  medium: { label: 'Medium', color: ORANGE, bg: ORANGE_L  },
+  low:    { label: 'Low',    color: GREEN,  bg: GREEN_L   },
+} as const
+
+const formatINR = (n: number) => {
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
+  if (n >= 1000) return `₹${(n / 1000).toFixed(1)}K`
+  return `₹${Math.round(n)}`
+}
+
+const goalEmoji = (name: string) => {
+  const n = name.toLowerCase()
+  if (n.includes('house') || n.includes('home')) return '🏠'
+  if (n.includes('emergency') || n.includes('safety')) return '🛡️'
+  if (n.includes('travel') || n.includes('trip') || n.includes('europe')) return '✈️'
+  if (n.includes('retire')) return '🌅'
+  if (n.includes('car')) return '🚗'
+  if (n.includes('education') || n.includes('study')) return '🎓'
+  if (n.includes('wedding') || n.includes('marriage')) return '💍'
+  if (n.includes('invest') || n.includes('fund')) return '💰'
+  return '🎯'
+}
+
+// ─── SEBI-Compliant Projection Engine ───────────────────────────────────
+function buildProjection(targetAmount: number, currentSaved: number, targetYear: number, monthlySIP: number) {
+  const years = Math.max(1, targetYear - new Date().getFullYear())
+  const months = years * 12
+  const remaining = Math.max(0, targetAmount - currentSaved)
+
+  const RATES = [
+    { label: 'Conservative', emoji: '🛡️', returnPct: 6,  riskLabel: 'Low risk',    color: GREEN,  assets: 'Govt schemes, fixed-return, capital preservation' },
+    { label: 'Balanced',     emoji: '⚖️', returnPct: 10, riskLabel: 'Medium risk',  color: TEAL,   assets: 'Mix of equity & fixed-income' },
+    { label: 'Growth',       emoji: '🚀', returnPct: 13, riskLabel: 'Higher risk',  color: INDIGO, assets: 'Equity-oriented (domestic & intl markets)' },
+  ]
+
+  const scenarios = RATES.map(s => {
+    const r = s.returnPct / 100 / 12
+    const monthlyNeeded = remaining <= 0 ? 0 : r > 0
+      ? Math.ceil(remaining * r / (Math.pow(1 + r, months) - 1))
+      : Math.ceil(remaining / months)
+    const projected = currentSaved + (r > 0
+      ? monthlySIP * ((Math.pow(1 + r, months) - 1) / r)
+      : monthlySIP * months)
+    return { ...s, monthlyNeeded, projected: Math.round(projected) }
+  })
+
+  const r8 = 0.08 / 12
+  const projAt8 = currentSaved + monthlySIP * ((Math.pow(1 + r8, months) - 1) / r8)
+  const simpleNeeded = remaining > 0 ? Math.ceil(remaining / months) : 0
+
+  return { scenarios, simpleNeeded, canAchieve: projAt8 >= targetAmount * 0.9, yearsLeft: years }
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────
 export default function GoalsScreen() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [name, setName] = useState('')
-  const [targetAmount, setTargetAmount] = useState('')
-  const [targetDate, setTargetDate] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [showSheet, setShowSheet] = useState(false)
+  const [editGoal, setEditGoal] = useState<Goal | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Form state
+  const [fEmoji, setFEmoji] = useState('🎯')
+  const [fName, setFName] = useState('')
+  const [fTarget, setFTarget] = useState('')
+  const [fSaved, setFSaved] = useState('')
+  const [fYear, setFYear] = useState(new Date().getFullYear() + 5)
+  const [fMonthly, setFMonthly] = useState('')
+  const [fPriority, setFPriority] = useState<'high' | 'medium' | 'low'>('medium')
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   const fetchGoals = useCallback(async () => {
     const { data } = await supabase
       .from('goals')
       .select('*')
       .order('created_at', { ascending: true })
-
     setGoals(data ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchGoals() }, [fetchGoals])
 
-  const onRefresh = async () => {
-    setRefreshing(true)
-    await fetchGoals()
-    setRefreshing(false)
+  const onRefresh = async () => { setRefreshing(true); await fetchGoals(); setRefreshing(false) }
+
+  const openAdd = () => {
+    setEditGoal(null)
+    setFEmoji('🎯'); setFName(''); setFTarget(''); setFSaved('0')
+    setFYear(new Date().getFullYear() + 5); setFMonthly(''); setFPriority('medium')
+    setShowSheet(true)
   }
 
-  const addGoal = async () => {
-    if (!name.trim()) { Alert.alert('Enter goal name'); return }
-    if (!targetAmount || isNaN(Number(targetAmount))) { Alert.alert('Enter valid target amount'); return }
-    if (!targetDate) { Alert.alert('Enter target date (YYYY-MM-DD)'); return }
+  const openEdit = (g: Goal) => {
+    setEditGoal(g)
+    setFEmoji(goalEmoji(g.name)); setFName(g.name)
+    setFTarget(String(g.target_amount)); setFSaved(String(g.saved_amount))
+    const yr = g.target_date ? new Date(g.target_date).getFullYear() : new Date().getFullYear() + 5
+    setFYear(yr); setFMonthly(''); setFPriority('medium')
+    setShowSheet(true)
+  }
 
-    setSaving(true)
+  const saveGoal = async () => {
+    if (!fName.trim()) { Alert.alert('Enter goal name'); return }
+    if (!fTarget || Number(fTarget) <= 0) { Alert.alert('Enter valid target amount'); return }
+
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
-    const { error } = await supabase.from('goals').insert([{
-      user_id: user?.id,
-      name: name.trim(),
-      target_amount: Number(targetAmount),
-      saved_amount: 0,
-      target_date: targetDate,
-    }])
-
-    setSaving(false)
-
-    if (error) {
-      Alert.alert('Error', `Could not save goal: ${error.message}`)
-      return
+    const payload = {
+      user_id: user.id,
+      name: fName.trim(),
+      target_amount: Number(fTarget),
+      saved_amount: Number(fSaved) || 0,
+      target_date: `${fYear}-12-31`,
     }
 
-    setShowModal(false)
-    setName(''); setTargetAmount(''); setTargetDate('')
+    if (editGoal) {
+      await supabase.from('goals').update(payload).eq('id', editGoal.id)
+    } else {
+      await supabase.from('goals').insert(payload)
+    }
+    setShowSheet(false)
     fetchGoals()
   }
 
-  const formatINR = (n: number) => {
-    if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
-    if (n >= 1000) return `₹${(n / 1000).toFixed(1)}K`
-    return `₹${Math.round(n)}`
+  const deleteGoal = async () => {
+    if (!editGoal) return
+    Alert.alert('Delete goal?', `Are you sure you want to delete "${editGoal.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        await supabase.from('goals').delete().eq('id', editGoal.id)
+        setShowSheet(false)
+        fetchGoals()
+      }},
+    ])
   }
 
-  const monthsLeft = (targetDate: string) => {
-    const diff = new Date(targetDate).getTime() - Date.now()
-    const months = Math.ceil(diff / (1000 * 60 * 60 * 24 * 30))
-    return Math.max(months, 0)
-  }
-
-  const monthlyNeeded = (goal: Goal) => {
-    const months = monthsLeft(goal.target_date)
-    if (months === 0) return 0
-    return Math.ceil((goal.target_amount - goal.saved_amount) / months)
-  }
+  // ─── Computed ───────────────────────────────────────────────────
+  const totalSaved  = goals.reduce((s, g) => s + g.saved_amount, 0)
+  const totalTarget = goals.reduce((s, g) => s + g.target_amount, 0)
+  const overallPct  = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0
+  const thisYear    = new Date().getFullYear()
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#4F8EF7" size="large" />
-      </View>
-    )
+    return <View style={styles.center}><ActivityIndicator color={BLUE} size="large" /></View>
   }
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4F8EF7" />}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Your goals</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
-            <Text style={styles.addBtnText}>+ Add</Text>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}>
+
+        {/* ── App Bar ────────────────────────────────────────────── */}
+        <View style={styles.appBar}>
+          <View style={styles.brandRow}>
+            <ArthFlowLogo size={22} />
+            <View style={styles.divider} />
+            <View>
+              <Text style={styles.barTitle}>Goals</Text>
+              <Text style={styles.barSub}>{goals.length} active · {overallPct}% overall</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.8}>
+            <Text style={styles.addBtnText}>+ New Goal</Text>
           </TouchableOpacity>
         </View>
 
+        {/* ── Summary Banner ─────────────────────────────────────── */}
+        {goals.length > 0 && (
+          <View style={styles.heroCard}>
+            <View style={styles.heroGlow} />
+            <View style={styles.heroContent}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroLabel}>ACROSS ALL GOALS</Text>
+                  <Text style={styles.heroAmount}>{formatINR(totalSaved)}</Text>
+                  <Text style={styles.heroSub}>saved of {formatINR(totalTarget)} target</Text>
+                </View>
+                <View style={{ position: 'relative', width: 64, height: 64 }}>
+                  <GoalArc progress={overallPct} color={ORANGE} size={64} strokeWidth={6} bgColor="rgba(255,255,255,0.15)" />
+                  <View style={styles.heroArcText}>
+                    <Text style={styles.heroArcPct}>{overallPct}%</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── Goal Cards ─────────────────────────────────────────── */}
         {goals.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyEmoji}>🎯</Text>
+            <Text style={{ fontSize: 48 }}>🎯</Text>
             <Text style={styles.emptyTitle}>No goals yet</Text>
-            <Text style={styles.emptySub}>Add your first goal — home, travel, emergency fund</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowModal(true)}>
-              <Text style={styles.emptyBtnText}>Add a goal</Text>
+            <Text style={styles.emptySub}>
+              Add a financial goal and see how much you need to save at different return rates.
+            </Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={openAdd}>
+              <Text style={styles.primaryBtnText}>+ Add First Goal</Text>
             </TouchableOpacity>
           </View>
         ) : (
           goals.map((goal) => {
             const pct = Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
-            const months = monthsLeft(goal.target_date)
-            const needed = monthlyNeeded(goal)
-            const isOnTrack = pct >= ((100 - months * (100 / (months + 1))) || 50)
-            const remaining = goal.target_amount - goal.saved_amount
+            const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : thisYear + 5
+            const yearsLeft = Math.max(0, targetYear - thisYear)
+            const monthlySIP = yearsLeft > 0 ? Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12)) : 0
+            const proj = buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
+            const onTrack = proj.canAchieve
+            const goalColor = onTrack ? BLUE : ORANGE
+            const isExpanded = expandedId === goal.id
+            const emoji = goalEmoji(goal.name)
 
             return (
-              <View key={goal.id} style={styles.goalCard}>
-                <View style={styles.goalHead}>
-                  <Text style={styles.goalName}>{goal.name}</Text>
-                  <View style={[styles.badge, isOnTrack ? styles.badgeGreen : styles.badgeAmber]}>
-                    <Text style={[styles.badgeText, isOnTrack ? styles.badgeTextGreen : styles.badgeTextAmber]}>
-                      {isOnTrack ? 'On track' : 'At risk'}
+              <View key={goal.id} style={[styles.goalCard, !onTrack && styles.goalCardWarn]}>
+                {/* Off-track banner */}
+                {!onTrack && yearsLeft > 0 && (
+                  <View style={styles.offTrackBanner}>
+                    <Text style={styles.offTrackText}>⚠ Need to increase monthly contribution to stay on track</Text>
+                  </View>
+                )}
+
+                <View style={{ padding: 16 }}>
+                  {/* Header row */}
+                  <View style={styles.goalHeader}>
+                    <View style={{ position: 'relative', width: 64, height: 64 }}>
+                      <GoalArc progress={pct} color={goalColor} size={64} strokeWidth={6} />
+                      <View style={styles.goalArcOverlay}>
+                        <Text style={[styles.goalArcPct, { color: goalColor }]}>{Math.round(pct)}%</Text>
+                        <Text style={{ fontSize: 14 }}>{emoji}</Text>
+                      </View>
+                    </View>
+
+                    <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.goalName}>{goal.name}</Text>
+                        {goal.priority && (() => {
+                          const pc = PRIORITY_CONFIG[goal.priority as keyof typeof PRIORITY_CONFIG]
+                          return pc ? (
+                            <View style={{ borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: pc.bg }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: pc.color, fontFamily: 'Manrope_700Bold' }}>{pc.label}</Text>
+                            </View>
+                          ) : null
+                        })()}
+                      </View>
+                      <Text style={styles.goalAmounts}>
+                        {formatINR(goal.saved_amount)} <Text style={{ color: TXT3 }}>of</Text> {formatINR(goal.target_amount)}
+                      </Text>
+                      <Text style={styles.goalYears}>
+                        {yearsLeft > 0 ? `${yearsLeft} yrs left · by ${targetYear}` : `Target: ${targetYear}`}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(goal)}>
+                      <Text style={{ fontSize: 13 }}>✏️</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* SIP row */}
+                  <View style={styles.sipRow}>
+                    <Text style={{ fontSize: 14, color: goalColor }}>📈</Text>
+                    <Text style={styles.sipText}>Monthly needed: {formatINR(proj.simpleNeeded)}/mo</Text>
+                    <Text style={[styles.sipStatus, { color: onTrack ? GREEN_H : ORANGE_H }]}>
+                      {onTrack ? 'On track ✓' : 'Needs ↑'}
                     </Text>
                   </View>
-                </View>
 
-                <View style={styles.progressBg}>
-                  <View style={[
-                    styles.progressFill,
-                    { width: `${pct}%`, backgroundColor: isOnTrack ? '#34D399' : '#4F8EF7' }
-                  ]} />
-                </View>
+                  {/* Projection toggle */}
+                  <TouchableOpacity style={[styles.projToggle, isExpanded && styles.projToggleActive]}
+                    onPress={() => setExpandedId(isExpanded ? null : goal.id)} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 13 }}>✨</Text>
+                    <Text style={[styles.projToggleText, isExpanded && { color: '#fff' }]}>
+                      {isExpanded ? 'Hide' : 'Show'} Return Scenarios
+                    </Text>
+                    <Text style={{ fontSize: 12, color: isExpanded ? '#fff' : TEAL }}>
+                      {isExpanded ? '▲' : '▼'}
+                    </Text>
+                  </TouchableOpacity>
 
-                <View style={styles.statsRow}>
-                  <View style={styles.stat}>
-                    <Text style={styles.statValue}>{formatINR(goal.saved_amount)}</Text>
-                    <Text style={styles.statLabel}>Saved</Text>
-                  </View>
-                  <View style={styles.stat}>
-                    <Text style={styles.statValue}>{formatINR(remaining)}</Text>
-                    <Text style={styles.statLabel}>Remaining</Text>
-                  </View>
-                  <View style={styles.stat}>
-                    <Text style={styles.statValue}>{months}mo</Text>
-                    <Text style={styles.statLabel}>Left</Text>
-                  </View>
-                </View>
+                  {/* Return Scenarios (expanded) */}
+                  {isExpanded && (
+                    <View style={{ marginTop: 12, gap: 8 }}>
+                      {/* Info box */}
+                      <View style={styles.infoBox}>
+                        <Text style={{ fontSize: 11, color: BLUE, marginTop: 1 }}>ℹ</Text>
+                        <Text style={styles.infoText}>
+                          To reach {formatINR(goal.target_amount)} by {targetYear} ({proj.yearsLeft} yrs), see how much you need at different return rates.
+                        </Text>
+                      </View>
 
-                <View style={[styles.insightRow, isOnTrack ? styles.insightGreen : styles.insightAmber]}>
-                  <Text style={[styles.insightText, isOnTrack ? styles.insightTextGreen : styles.insightTextAmber]}>
-                    {isOnTrack
-                      ? `You need ${formatINR(needed)}/month — you're on track. Keep it up.`
-                      : `At current pace, you'll miss this goal. You need ${formatINR(needed)}/month.`
-                    }
-                  </Text>
-                </View>
+                      {/* Scenario cards */}
+                      {proj.scenarios.map(s => {
+                        const enough = s.projected >= goal.target_amount * 0.9
+                        const diff = s.projected - goal.target_amount
+                        return (
+                          <View key={s.label} style={[styles.scenarioCard, { borderColor: s.color + '30' }]}>
+                            <View style={[styles.scenarioHeader, { backgroundColor: s.color + '12' }]}>
+                              <Text style={{ fontSize: 15 }}>{s.emoji}</Text>
+                              <View style={{ flex: 1, marginLeft: 8 }}>
+                                <Text style={[styles.scenarioTitle, { color: s.color }]}>{s.label} · {s.returnPct}% p.a.</Text>
+                                <Text style={styles.scenarioRisk}>{s.riskLabel}</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.scenarioNeedLabel}>Need/month</Text>
+                                <Text style={[styles.scenarioNeedVal, { color: s.color }]}>{formatINR(s.monthlyNeeded)}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.scenarioBody}>
+                              <View>
+                                <Text style={styles.scenarioBodyLabel}>₹{formatINR(monthlySIP)}/mo projects to</Text>
+                                <Text style={[styles.scenarioBodyVal, { color: enough ? GREEN_H : ORANGE_H }]}>
+                                  {formatINR(s.projected)}
+                                </Text>
+                              </View>
+                              <View style={[styles.scenarioResultBadge, { backgroundColor: enough ? GREEN_L : ORANGE_L }]}>
+                                <Text style={[styles.scenarioResultText, { color: enough ? GREEN_H : ORANGE_H }]}>
+                                  {enough ? `+${formatINR(diff)} surplus ✓` : `${formatINR(Math.abs(diff))} short`}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.scenarioAssets}>
+                              <Text style={styles.scenarioAssetsText}>Example: {s.assets}</Text>
+                            </View>
+                          </View>
+                        )
+                      })}
 
-                <TouchableOpacity style={styles.adjustBtn}>
-                  <Text style={styles.adjustBtnText}>Adjust plan</Text>
-                </TouchableOpacity>
+                      {/* SEBI Disclaimer */}
+                      <View style={styles.sebiBox}>
+                        <Text style={styles.sebiText}>
+                          ⚠️ Illustrative projections only. Returns shown are hypothetical and not guaranteed. Past performance is not indicative of future results. ArthFlow does not recommend specific investment products. Consult a SEBI-registered investment advisor (RIA) for personalised advice.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
               </View>
             )
           })
         )}
       </ScrollView>
 
-      <Modal visible={showModal} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New goal</Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
-                <Text style={styles.modalClose}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+      {/* ── Goal Add/Edit Sheet ──────────────────────────────────── */}
+      <Modal visible={showSheet} transparent animationType="slide" onRequestClose={() => setShowSheet(false)}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowSheet(false)}>
+          <View style={styles.sheetContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>{editGoal ? 'Edit Goal' : 'New Goal'}</Text>
+                <TouchableOpacity onPress={() => setShowSheet(false)}
+                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 14, color: TXT2 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
 
-            <Text style={styles.fieldLabel}>Goal name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Home down payment"
-              placeholderTextColor="#4B5563"
-              value={name}
-              onChangeText={setName}
-            />
+              {/* Emoji + Name */}
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                <TouchableOpacity onPress={() => setShowEmojiPicker(p => !p)}
+                  style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 24 }}>{fEmoji}</Text>
+                </TouchableOpacity>
+                <TextInput value={fName} onChangeText={setFName} placeholder="Goal name (e.g. Europe Trip)"
+                  placeholderTextColor={TXT3}
+                  style={styles.formInput} />
+              </View>
 
-            <Text style={styles.fieldLabel}>Target amount (₹)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 1200000"
-              placeholderTextColor="#4B5563"
-              value={targetAmount}
-              onChangeText={setTargetAmount}
-              keyboardType="numeric"
-            />
+              {showEmojiPicker && (
+                <View style={styles.emojiGrid}>
+                  {GOAL_EMOJIS.map(e => (
+                    <TouchableOpacity key={e} onPress={() => { setFEmoji(e); setShowEmojiPicker(false) }}
+                      style={[styles.emojiBtn, fEmoji === e && { backgroundColor: BLUE_L }]}>
+                      <Text style={{ fontSize: 20 }}>{e}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            <Text style={styles.fieldLabel}>Target date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 2026-12-31"
-              placeholderTextColor="#4B5563"
-              value={targetDate}
-              onChangeText={setTargetDate}
-            />
+              {/* Target Amount */}
+              <Text style={styles.formLabel}>TARGET AMOUNT</Text>
+              <View style={styles.currencyRow}>
+                <Text style={styles.currencyPrefix}>₹</Text>
+                <TextInput value={fTarget} onChangeText={setFTarget} placeholder="0" placeholderTextColor={TXT3}
+                  keyboardType="numeric" style={styles.currencyInput} />
+              </View>
 
-            <TouchableOpacity
-              style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-              onPress={addGoal}
-              disabled={saving}
-            >
-              {saving
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.saveBtnText}>Save goal</Text>
-              }
-            </TouchableOpacity>
+              {/* Already Saved */}
+              <Text style={styles.formLabel}>ALREADY SAVED</Text>
+              <View style={styles.currencyRow}>
+                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
+                <TextInput value={fSaved} onChangeText={setFSaved} placeholder="0" placeholderTextColor={TXT3}
+                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
+              </View>
+
+              {/* Target Year */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={styles.formLabel}>TARGET YEAR</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>
+                  {fYear} · {fYear - thisYear > 0 ? `${fYear - thisYear} yrs` : 'this year'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <TouchableOpacity onPress={() => setFYear(Math.max(thisYear, fYear - 1))}
+                  style={styles.yearBtn}><Text style={styles.yearBtnText}>−</Text></TouchableOpacity>
+                <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: BG_SEC }}>
+                  <View style={{ height: 6, borderRadius: 3, backgroundColor: BLUE,
+                    width: `${Math.min(100, ((fYear - thisYear) / 40) * 100)}%` }} />
+                </View>
+                <TouchableOpacity onPress={() => setFYear(Math.min(thisYear + 40, fYear + 1))}
+                  style={styles.yearBtn}><Text style={styles.yearBtnText}>+</Text></TouchableOpacity>
+              </View>
+
+              {/* Monthly SIP */}
+              <Text style={styles.formLabel}>MONTHLY SIP / CONTRIBUTION</Text>
+              <View style={styles.currencyRow}>
+                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
+                <TextInput value={fMonthly} onChangeText={setFMonthly} placeholder="0" placeholderTextColor={TXT3}
+                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
+              </View>
+
+              {/* Priority */}
+              <Text style={styles.formLabel}>PRIORITY</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 24 }}>
+                {(['high', 'medium', 'low'] as const).map(p => {
+                  const cfg = PRIORITY_CONFIG[p]
+                  const sel = fPriority === p
+                  return (
+                    <TouchableOpacity key={p} onPress={() => setFPriority(p)}
+                      style={[styles.priorityChip, { backgroundColor: sel ? cfg.bg : BG_SEC, borderColor: sel ? cfg.color + '50' : 'transparent' }]}>
+                      <Text style={[styles.priorityChipText, { color: sel ? cfg.color : TXT3 }]}>{cfg.label}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+
+              {/* Actions */}
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 32 }}>
+                {editGoal && (
+                  <TouchableOpacity style={styles.deleteBtn} onPress={deleteGoal}>
+                    <Text style={{ fontSize: 15, color: '#fff' }}>🗑</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.saveBtn, { backgroundColor: (fName.trim() && Number(fTarget) > 0) ? BLUE : BG_SEC }]}
+                  onPress={saveGoal} disabled={!fName.trim() || Number(fTarget) <= 0}>
+                  <Text style={[styles.saveBtnText, { color: (fName.trim() && Number(fTarget) > 0) ? '#fff' : TXT3 }]}>
+                    {editGoal ? 'Save Changes' : 'Create Goal'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </TouchableOpacity>
       </Modal>
     </View>
   )
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#06091A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20, paddingBottom: 48 },
-  center: { flex: 1, backgroundColor: '#06091A', justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: '800', color: '#F1F5F9', letterSpacing: -0.5 },
-  addBtn: { backgroundColor: 'rgba(79,142,247,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(79,142,247,0.2)' },
-  addBtnText: { color: '#4F8EF7', fontWeight: '700', fontSize: 14 },
-  emptyCard: { backgroundColor: '#0D1326', borderRadius: 20, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  emptyEmoji: { fontSize: 40, marginBottom: 12 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#F1F5F9', marginBottom: 8 },
-  emptySub: { fontSize: 14, color: '#94A3B8', textAlign: 'center', marginBottom: 20, lineHeight: 20 },
-  emptyBtn: { backgroundColor: '#4F8EF7', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
-  emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  goalCard: { backgroundColor: '#0D1326', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  goalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  goalName: { fontSize: 16, fontWeight: '700', color: '#F1F5F9' },
-  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  badgeGreen: { backgroundColor: 'rgba(52,211,153,0.15)' },
-  badgeAmber: { backgroundColor: 'rgba(251,191,36,0.15)' },
-  badgeText: { fontSize: 12, fontWeight: '700' },
-  badgeTextGreen: { color: '#34D399' },
-  badgeTextAmber: { color: '#FBBF24' },
-  progressBg: { height: 10, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden', marginBottom: 16 },
-  progressFill: { height: '100%', borderRadius: 8 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
-  stat: { flex: 1 },
-  statValue: { fontSize: 15, fontWeight: '700', color: '#F1F5F9' },
-  statLabel: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
-  insightRow: { borderRadius: 16, padding: 16 },
-  insightGreen: { backgroundColor: 'rgba(52,211,153,0.08)' },
-  insightAmber: { backgroundColor: 'rgba(79,142,247,0.08)' },
-  insightText: { fontSize: 13, lineHeight: 20 },
-  insightTextGreen: { color: '#34D399' },
-  insightTextAmber: { color: '#4F8EF7' },
-  adjustBtn: { marginTop: 16, backgroundColor: '#0F172A', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  adjustBtnText: { color: '#F1F5F9', fontWeight: '700' },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
-  modalCard: { backgroundColor: '#0D1326', padding: 20, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#F1F5F9' },
-  modalClose: { color: '#94A3B8', fontSize: 15 },
-  fieldLabel: { fontSize: 12, fontWeight: '600', color: '#94A3B8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 },
-  input: { backgroundColor: '#0D1326', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 14, fontSize: 15, color: '#F1F5F9', marginBottom: 16 },
-  saveBtn: { backgroundColor: '#4F8EF7', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+
+  // App Bar
+  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  divider: { width: 1, height: 18, backgroundColor: BORDER, marginHorizontal: 4 },
+  barTitle: { fontSize: 13, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  barSub: { fontSize: 10, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 4 },
+  addBtnText: { fontSize: 12, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+
+  // Hero
+  heroCard: { borderRadius: 20, padding: 16, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 40, elevation: 12 },
+  heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
+  heroContent: { position: 'relative', zIndex: 1 },
+  heroLabel: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
+  heroAmount: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroSub: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  heroArcText: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  heroArcPct: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+
+  // Goal Card
+  goalCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
+  goalCardWarn: { borderColor: '#FDE68A' },
+  offTrackBanner: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: ORANGE_L },
+  offTrackText: { fontSize: 11, fontWeight: '700', color: ORANGE_H, fontFamily: 'Manrope_700Bold' },
+  goalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  goalArcOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  goalArcPct: { fontSize: 12, fontWeight: '800', lineHeight: 14, fontFamily: 'Manrope_700Bold' },
+  goalName: { fontSize: 14, fontWeight: '800', color: TXT1, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
+  goalAmounts: { fontSize: 12, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  goalYears: { fontSize: 11, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  editBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
+
+  // SIP row
+  sipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 12 },
+  sipText: { flex: 1, fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sipStatus: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+
+  // Projection toggle
+  projToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 10, backgroundColor: TEAL_L },
+  projToggleActive: { backgroundColor: TEAL },
+  projToggleText: { fontSize: 12, fontWeight: '800', color: TEAL, fontFamily: 'Manrope_700Bold' },
+
+  // Info box
+  infoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 16, padding: 12, backgroundColor: BLUE_L },
+  infoText: { flex: 1, fontSize: 12, fontWeight: '600', color: BLUE, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
+
+  // Scenario card
+  scenarioCard: { borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
+  scenarioHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
+  scenarioTitle: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioRisk: { fontSize: 10, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
+  scenarioNeedLabel: { fontSize: 10, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioNeedVal: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioBody: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: BG_SEC },
+  scenarioBodyLabel: { fontSize: 10, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioBodyVal: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioResultBadge: { borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  scenarioResultText: { fontSize: 10, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioAssets: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: BG_SEC },
+  scenarioAssetsText: { fontSize: 10, fontWeight: '600', color: TXT2, lineHeight: 16, fontFamily: 'Manrope_400Regular' },
+
+  // SEBI
+  sebiBox: { borderRadius: 16, padding: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
+  sebiText: { fontSize: 10, fontWeight: '600', color: '#92400E', lineHeight: 16, fontFamily: 'Manrope_400Regular' },
+
+  // Empty
+  emptyCard: { backgroundColor: '#fff', borderRadius: 20, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
+  emptyTitle: { fontSize: 15, fontWeight: '800', color: TXT1, marginTop: 12, fontFamily: 'Manrope_700Bold' },
+  emptySub: { fontSize: 13, fontWeight: '500', color: TXT3, textAlign: 'center', marginTop: 4, marginBottom: 20, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
+  primaryBtn: { backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 20, paddingVertical: 14, shadowColor: BLUE, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },
+  primaryBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+
+  // Sheet
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.65)', justifyContent: 'flex-end' },
+  sheetContainer: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '90%' },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 20 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+
+  // Form
+  formInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, fontSize: 14, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  formLabel: { fontSize: 11, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
+  currencyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 20 },
+  currencyPrefix: { fontSize: 16, fontWeight: '700', color: TXT3 },
+  currencyInput: { flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 16 },
+  emojiBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  yearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
+  yearBtnText: { fontSize: 18, fontWeight: '700', color: TXT1 },
+  priorityChip: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5 },
+  priorityChipText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  deleteBtn: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: RED },
+  saveBtn: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
+  saveBtnText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
 })
