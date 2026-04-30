@@ -1,9 +1,12 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -34,6 +37,28 @@ const BORDER  = '#E5E7EB'
 const BG_SEC  = '#F1F5F9'
 
 const { width: SCREEN_W } = Dimensions.get('window')
+const INDIGO   = '#6366F1'
+const INDIGO_L = '#E0E7FF'
+const TEAL_L   = '#CCFBF1'
+
+// ─── Asset Config for Wealth ──────────────────────────────────────────
+interface AssetPortfolio {
+  liquidCash: number; mutualFunds: number; stocks: number; epf: number;
+  ppf: number; gold: number; realEstate: number; other: number;
+}
+const defaultAssets: AssetPortfolio = { liquidCash: 0, mutualFunds: 0, stocks: 0, epf: 0, ppf: 0, gold: 0, realEstate: 0, other: 0 }
+const ASSET_STORAGE_KEY = '@arthflow_assets'
+const ASSET_CONFIG: { key: keyof AssetPortfolio; label: string; emoji: string; color: string; bg: string }[] = [
+  { key: 'liquidCash',  label: 'Cash & Savings', emoji: '💵', color: GREEN,  bg: GREEN_L },
+  { key: 'mutualFunds', label: 'Mutual Funds',   emoji: '📈', color: BLUE,   bg: BLUE_L },
+  { key: 'stocks',      label: 'Stocks',          emoji: '📊', color: INDIGO, bg: INDIGO_L },
+  { key: 'epf',         label: 'EPF / PF',        emoji: '🏦', color: TEAL,   bg: TEAL_L },
+  { key: 'ppf',         label: 'PPF',             emoji: '🔒', color: '#8B5CF6', bg: '#EDE9FE' },
+  { key: 'gold',        label: 'Gold',            emoji: '🥇', color: ORANGE, bg: ORANGE_L },
+  { key: 'realEstate',  label: 'Real Estate',     emoji: '🏠', color: RED,    bg: '#FEE2E2' },
+  { key: 'other',       label: 'Other Assets',    emoji: '🔧', color: TXT2,   bg: BG_SEC },
+]
+function totalNetWorth(a: AssetPortfolio) { return Object.values(a).reduce((s, v) => s + v, 0) }
 
 type ProtectionStatus = 'missing' | 'partial' | 'ok'
 interface ProtectionItem { id: string; label: string; status: ProtectionStatus; icon: string; desc: string; impact: string }
@@ -84,6 +109,27 @@ export default function ProfileScreen() {
   const [editIncome, setEditIncome]   = useState('')
   const [editType, setEditType]       = useState<string>('salary')
   const [showSignOut, setShowSignOut] = useState(false)
+  const [showValues, setShowValues] = useState(false)
+
+  // Wealth / Assets
+  const [assets, setAssets] = useState<AssetPortfolio>(defaultAssets)
+  const [editingAsset, setEditingAsset] = useState<keyof AssetPortfolio | null>(null)
+  const [assetInput, setAssetInput] = useState('')
+
+  // Load assets from AsyncStorage
+  useEffect(() => {
+    AsyncStorage.getItem(ASSET_STORAGE_KEY).then(raw => {
+      if (raw) try { setAssets(JSON.parse(raw)) } catch {}
+    })
+  }, [])
+
+  const saveAssetValue = (key: keyof AssetPortfolio, val: number) => {
+    setAssets(prev => {
+      const next = { ...prev, [key]: val }
+      AsyncStorage.setItem(ASSET_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -204,7 +250,7 @@ export default function ProfileScreen() {
     return streak
   }
 
-  const netWorth = totalSaved + goals.reduce((s, g) => s + (g.current_amount || 0), 0)
+  const netWorth = totalSaved + goals.reduce((s, g) => s + (g.current_amount || 0), 0) + totalNetWorth(assets)
   const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
   const age = profile?.age ?? 28
   const riskLabel = age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
@@ -269,18 +315,26 @@ export default function ProfileScreen() {
           </View>
           <View style={st.heroStatsGrid}>
             {[
-              { emoji: '💰', value: fmtInr(monthlyIncome || income), label: 'Income' },
-              { emoji: '💎', value: fmtInr(netWorth), label: 'Net Worth' },
-              { emoji: '📈', value: `${savePct}%`, label: 'Saving' },
-              { emoji: riskEmoji, value: riskLabel.slice(0, 6), label: 'Risk' },
+              { emoji: '💰', value: fmtInr(monthlyIncome || income), label: 'Income', sensitive: true },
+              { emoji: '💎', value: fmtInr(netWorth), label: 'Net Worth', sensitive: true },
+              { emoji: '📈', value: `${savePct}%`, label: 'Saving', sensitive: false },
+              { emoji: riskEmoji, value: riskLabel.slice(0, 6), label: 'Risk', sensitive: false },
             ].map(s => (
               <View key={s.label} style={st.heroStatBox}>
                 <Text style={{ fontSize: 14 }}>{s.emoji}</Text>
-                <Text style={st.heroStatValue}>{s.value}</Text>
+                <Text style={st.heroStatValue}>{s.sensitive && !showValues ? '••••' : s.value}</Text>
                 <Text style={st.heroStatLabel}>{s.label}</Text>
               </View>
             ))}
           </View>
+          <TouchableOpacity
+            onPress={() => setShowValues(!showValues)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginTop: 10, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 13 }}>{showValues ? '🙈' : '👁️'}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_700Bold' }}>{showValues ? 'Hide' : 'Show'}</Text>
+          </TouchableOpacity>
 
           {/* DOB / Phone row */}
           {(profile?.dob || profile?.phone || age) && (
@@ -351,6 +405,71 @@ export default function ProfileScreen() {
         )
       })}
 
+      {/* ─── Net Worth & Asset Portfolio ─── */}
+      {(() => {
+        const nw = totalNetWorth(assets)
+        const segments = ASSET_CONFIG.filter(c => assets[c.key] > 0).sort((a, b) => assets[b.key] - assets[a.key])
+        return (
+          <>
+            <View style={[st.sectionHeader, { marginTop: 20 }]}>
+              <View style={st.sectionTitleRow}>
+                <Text style={{ fontSize: 15 }}>💎</Text>
+                <Text style={st.sectionTitle}>Net Worth</Text>
+              </View>
+              <View style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: BLUE_L }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>{showValues ? fmtInr(nw) : '••••'}</Text>
+              </View>
+            </View>
+
+            {/* Allocation bar */}
+            {nw > 0 && (
+              <View style={st.card}>
+                <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 }}>
+                  {segments.map(c => (
+                    <View key={c.key} style={{ flex: assets[c.key] / nw, backgroundColor: c.color, minWidth: 0 }} />
+                  ))}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {segments.map(c => (
+                    <View key={c.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.color }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold' }}>
+                        {c.emoji} {c.label} {Math.round((assets[c.key] / nw) * 100)}%
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Asset grid */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+              {ASSET_CONFIG.map(cfg => {
+                const val = assets[cfg.key]
+                return (
+                  <TouchableOpacity
+                    key={cfg.key}
+                    onPress={() => { setEditingAsset(cfg.key); setAssetInput(val > 0 ? String(val) : '') }}
+                    style={{ width: (SCREEN_W - 50) / 2, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: val > 0 ? cfg.color + '25' : BORDER }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 12, backgroundColor: cfg.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 }}>{cfg.label}</Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold' }}>
+                      {val > 0 ? (showValues ? fmtInr(val) : '••••') : 'Tap to add'}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </>
+        )
+      })()}
+
       {/* ─── Monthly Loop History ─── */}
       <View style={[st.card, { marginTop: 20 }]}>
         <View style={st.cardHeaderRow}>
@@ -396,15 +515,15 @@ export default function ProfileScreen() {
         <View style={st.summaryGrid}>
           <View style={st.summaryItem}>
             <Text style={st.summaryLabel}>Income</Text>
-            <Text style={[st.summaryValue, { color: TXT1 }]}>{fmtInr(income)}</Text>
+            <Text style={[st.summaryValue, { color: TXT1 }]}>{showValues ? fmtInr(income) : '••••'}</Text>
           </View>
           <View style={st.summaryItem}>
             <Text style={st.summaryLabel}>Expenses</Text>
-            <Text style={[st.summaryValue, { color: RED }]}>{fmtInr(expenses)}</Text>
+            <Text style={[st.summaryValue, { color: RED }]}>{showValues ? fmtInr(expenses) : '••••'}</Text>
           </View>
           <View style={st.summaryItem}>
             <Text style={st.summaryLabel}>Savings</Text>
-            <Text style={[st.summaryValue, { color: GREEN }]}>{fmtInr(Math.max(savings, 0))}</Text>
+            <Text style={[st.summaryValue, { color: GREEN }]}>{showValues ? fmtInr(Math.max(savings, 0)) : '••••'}</Text>
           </View>
         </View>
       </View>
@@ -529,6 +648,7 @@ export default function ProfileScreen() {
 
       {/* ─── Edit Profile Sheet ─── */}
       <Modal visible={showEdit} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={st.modalOverlay}>
           <View style={[st.modalCard, { maxHeight: '92%' }]}>
             <View style={st.sheetHandle} />
@@ -635,6 +755,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── Feedback Sheet ─── */}
@@ -738,6 +859,57 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* ─── Asset Edit Sheet ─── */}
+      <Modal visible={!!editingAsset} animationType="slide" transparent onRequestClose={() => setEditingAsset(null)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={st.modalOverlay}>
+          <View style={st.modalCard}>
+            <View style={st.sheetHandle} />
+            {(() => {
+              const cfg = ASSET_CONFIG.find(c => c.key === editingAsset)
+              if (!cfg) return null
+              return (
+                <>
+                  <View style={st.modalHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: cfg.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 20 }}>{cfg.emoji}</Text>
+                      </View>
+                      <Text style={st.modalTitle}>{cfg.label}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setEditingAsset(null)} style={st.modalCloseBtn}>
+                      <Text style={st.modalCloseText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 16 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
+                    <TextInput
+                      value={assetInput}
+                      onChangeText={setAssetInput}
+                      placeholder="0"
+                      placeholderTextColor={TXT3}
+                      keyboardType="numeric"
+                      style={{ flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}
+                      autoFocus
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={{ borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: BLUE }}
+                    onPress={() => {
+                      if (editingAsset) saveAssetValue(editingAsset, Number(assetInput) || 0)
+                      setEditingAsset(null)
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' }}>✓ Save {cfg.label}</Text>
+                  </TouchableOpacity>
+                </>
+              )
+            })()}
+          </View>
+        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── Sign Out Confirmation Sheet ─── */}

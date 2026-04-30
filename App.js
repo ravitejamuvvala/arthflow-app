@@ -9,13 +9,12 @@ import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
 
 import AddTransactionScreen from './src/screens/AddTransactionScreen'
+import CoachScreen from './src/screens/CoachScreen'
 import GoalsScreen from './src/screens/GoalsScreen'
-import HomeScreen from './src/screens/HomeScreen'
 import LoginScreen from './src/screens/LoginScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
-import PlanScreen from './src/screens/PlanScreen'
 import ProfileScreen from './src/screens/ProfileScreen'
-import WealthScreen from './src/screens/WealthScreen'
+import ThisMonthScreen from './src/screens/ThisMonthScreen'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -116,18 +115,16 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.screen}>
-        {activeTab === 'home' && <HomeScreen refreshTrigger={refreshKey} onAddTransaction={() => setShowAddTransaction(true)} onNavigateCoach={() => setActiveTab('coach')} />}
-        {activeTab === 'wealth' && <WealthScreen />}
-        {activeTab === 'goals' && <GoalsScreen />}
-        {activeTab === 'coach' && <PlanScreen />}
+        {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
+        {activeTab === 'plan' && <GoalsScreen />}
+        {activeTab === 'coach' && <CoachScreen />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
 
       <View style={styles.tabBar}>
         {[
           { key: 'home', icon: 'home', label: 'Home' },
-          { key: 'wealth', icon: 'trending-up', label: 'Wealth' },
-          { key: 'goals', icon: 'target', label: 'Goals' },
+          { key: 'plan', icon: 'target', label: 'Plan' },
           { key: 'coach', icon: 'zap', label: 'Coach' },
           { key: 'profile', icon: 'user', label: 'Me' },
         ].map(tab => (
