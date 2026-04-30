@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -42,8 +44,8 @@ const CAT_CONFIG = {
 
 function mapCategory(cat: string): keyof typeof CAT_CONFIG {
   const l = (cat || '').toLowerCase()
-  if (['food', 'dining', 'transport', 'groceries', 'rent', 'bills', 'utilities', 'health'].some(k => l.includes(k))) return 'essentials'
-  if (['shopping', 'entertainment', 'travel'].some(k => l.includes(k))) return 'lifestyle'
+  if (['essentials', 'food', 'dining', 'transport', 'groceries', 'rent', 'bills', 'utilities', 'health'].some(k => l.includes(k))) return 'essentials'
+  if (['lifestyle', 'shopping', 'entertainment', 'travel'].some(k => l.includes(k))) return 'lifestyle'
   if (['emi', 'loan', 'credit'].some(k => l.includes(k))) return 'emis'
   return 'other'
 }
@@ -77,6 +79,10 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
   const [refreshing, setRefreshing] = useState(false)
   const [userName, setUserName] = useState('')
   const [userAge, setUserAge] = useState(28)
+  const [baseIncome, setBaseIncome] = useState(0) // from profile.monthly_income
+  const [incomeOverride, setIncomeOverride] = useState<number | null>(null) // user override for this month
+  const [showIncomeSheet, setShowIncomeSheet] = useState(false)
+  const [incomeInput, setIncomeInput] = useState('')
   const [activeCat, setActiveCat] = useState<keyof typeof CAT_CONFIG | null>(null)
   const [showExpSheet, setShowExpSheet] = useState(false)
   const [editItem, setEditItem] = useState<Transaction | null>(null)
@@ -97,12 +103,13 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, age')
+      .select('full_name, age, monthly_income')
       .eq('id', user.id)
       .single()
 
     setUserName(profile?.full_name || user.email?.split('@')[0] || 'there')
     if (profile?.age) setUserAge(profile.age)
+    if (profile?.monthly_income) setBaseIncome(profile.monthly_income)
 
     const startOfMonth = new Date()
     startOfMonth.setDate(1)
@@ -133,7 +140,8 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
   startOfMonth.setHours(0, 0, 0, 0)
 
   const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
-  const income = thisMonthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const txIncome = thisMonthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const income = incomeOverride ?? (baseIncome || txIncome)
   const expenseItems = thisMonthTx.filter(t => t.type === 'expense')
   const totalSpent = expenseItems.reduce((s, t) => s + t.amount, 0)
   const savings = income - totalSpent
@@ -303,15 +311,16 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
 
           <View style={styles.heroStats}>
             {[
-              { label: 'INCOME', value: formatINR(income), sub: 'this month', good: true },
-              { label: 'SPENT', value: formatINR(totalSpent), sub: income > 0 ? `${Math.round((totalSpent / income) * 100)}% of income` : '—', good: totalSpent <= income * 0.8 },
-              { label: 'SAVED', value: `${savingsPct}%`, sub: savingsPct >= 20 ? 'on track ✓' : 'target 20%', good: savingsPct >= 20 },
+              { label: 'INCOME', value: formatINR(income), sub: incomeOverride ? 'adjusted ✎' : 'base income', good: true, tappable: true },
+              { label: 'SPENT', value: formatINR(totalSpent), sub: income > 0 ? `${Math.round((totalSpent / income) * 100)}% of income` : '—', good: totalSpent <= income * 0.8, tappable: false },
+              { label: 'SAVED', value: `${savingsPct}%`, sub: savingsPct >= 20 ? 'on track ✓' : 'target 20%', good: savingsPct >= 20, tappable: false },
             ].map(s => (
-              <View key={s.label} style={styles.heroStatBox}>
-                <Text style={styles.heroStatLabel}>{s.label}</Text>
+              <TouchableOpacity key={s.label} style={styles.heroStatBox} activeOpacity={s.tappable ? 0.6 : 1}
+                onPress={s.tappable ? () => { setIncomeInput(String(income)); setShowIncomeSheet(true) } : undefined}>
+                <Text style={styles.heroStatLabel}>{s.label}{s.tappable ? ' ✎' : ''}</Text>
                 <Text style={styles.heroStatValue}>{s.value}</Text>
                 <Text style={[styles.heroStatSub, { color: s.good ? 'rgba(34,197,94,0.85)' : 'rgba(251,191,36,0.9)' }]}>{s.sub}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -319,38 +328,31 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
 
       {/* ── Your Money Blueprint ─────────────────────────────────── */}
       <View style={styles.card}>
-        <View style={styles.bpHeader}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.cardTitle}>Your Money Blueprint</Text>
-            <Text style={styles.bpRationale}>{budget.rationale}</Text>
-          </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Text style={styles.cardTitle}>Money Blueprint</Text>
           <View style={styles.bpBadge}>
             <Text style={styles.bpBadgeText}>{budget.label}</Text>
           </View>
         </View>
-        <Text style={styles.bpSub}>
-          Committed / Lifestyle / Wealth · age {userAge} · {formatINR(income)}/mo
-        </Text>
 
         {[
-          { label: 'Committed', emoji: '🏦', actual: needsPct, target: budget.needsTarget, good: needsPct <= budget.needsTarget, desc: 'Rent, EMIs, bills & basics', tip: `Stay below ${budget.needsTarget}%`, okColor: BLUE, badColor: RED, rule: 'max' as const },
-          { label: 'Lifestyle', emoji: '🌟', actual: wantsPct, target: budget.wantsTarget, good: wantsPct <= budget.wantsTarget, desc: 'Dining, shopping, fun', tip: `Stay below ${budget.wantsTarget}%`, okColor: ORANGE_H, badColor: RED, rule: 'max' as const },
-          { label: 'Wealth', emoji: '📈', actual: savingsPct, target: budget.savingsTarget, good: savingsPct >= budget.savingsTarget, desc: 'Savings for your future self', tip: `Aim for ${budget.savingsTarget}%+`, okColor: GREEN_H, badColor: ORANGE_H, rule: 'min' as const },
+          { label: 'Committed', emoji: '🏦', actual: needsPct, target: budget.needsTarget, amount: catTotals.essentials + catTotals.emis, good: needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
+          { label: 'Lifestyle', emoji: '🌟', actual: wantsPct, target: budget.wantsTarget, amount: catTotals.lifestyle, good: wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
+          { label: 'Wealth', emoji: '📈', actual: savingsPct, target: budget.savingsTarget, amount: Math.max(0, savings), good: savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
         ].map(row => {
           const barColor = row.good ? row.okColor : row.badColor
           return (
-            <View key={row.label} style={styles.bpRow}>
-              <View style={styles.bpLabelRow}>
+            <View key={row.label} style={{ marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 13 }}>{row.emoji}</Text>
                   <Text style={styles.bpLabel}>{row.label}</Text>
-                  <Text style={styles.bpDesc}>· {row.desc}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.bpTip}>{row.tip}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3 }}>{formatINR(row.amount)}</Text>
                   <View style={[styles.bpPill, { backgroundColor: barColor + '18' }]}>
                     <Text style={[styles.bpPillText, { color: barColor }]}>
-                      {row.actual}% {row.good ? '✓' : row.rule === 'min' ? '↑' : '↓'}
+                      {row.actual}%{row.good ? ' ✓' : ''}
                     </Text>
                   </View>
                 </View>
@@ -363,27 +365,9 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
           )
         })}
 
-        {/* Legend */}
-        <View style={styles.bpLegend}>
-          {[
-            { emoji: '🏦', label: 'Committed', sub: 'Must pay' },
-            { emoji: '🌟', label: 'Lifestyle', sub: 'Choose to' },
-            { emoji: '📈', label: 'Wealth', sub: 'Future you' },
-          ].map(l => (
-            <View key={l.label} style={styles.legendItem}>
-              <Text style={{ fontSize: 13 }}>{l.emoji}</Text>
-              <Text style={styles.legendLabel}>{l.label}</Text>
-              <Text style={styles.legendSub}>{l.sub}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.bpFootnote}>
-          <Text style={{ fontSize: 11, color: TEAL, marginTop: 1 }}>ℹ</Text>
-          <Text style={styles.bpFootnoteText}>
-            Blueprint adjusts as you age & earn more. The grey marker (|) is your personalised target.
-          </Text>
-        </View>
+        <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 10, color: TXT3, textAlign: 'center', marginTop: 4 }}>
+          Target: {budget.rationale} · Grey marker = your target
+        </Text>
       </View>
 
       {/* ── Expense Categories ───────────────────────────────────── */}
@@ -640,8 +624,10 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
 
       {/* ── Expense Add/Edit Sheet ───────────────────────────────── */}
       <Modal visible={showExpSheet} transparent animationType="slide" onRequestClose={() => setShowExpSheet(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowExpSheet(false)}>
           <View style={styles.sheetContainer} onStartShouldSetResponder={() => true}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.sheetHandle} />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <Text style={{ fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}>
@@ -723,8 +709,58 @@ export default function HomeScreen({ onAddTransaction, onNavigateCoach, refreshT
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Income Override Sheet ─────────────────────────────── */}
+      <Modal visible={showIncomeSheet} transparent animationType="slide" onRequestClose={() => setShowIncomeSheet(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowIncomeSheet(false)}>
+          <View style={styles.sheetContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}>
+                Update This Month's Income
+              </Text>
+              <TouchableOpacity onPress={() => setShowIncomeSheet(false)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 14, color: TXT2 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginBottom: 12, lineHeight: 18 }}>
+              Base income from profile: {formatINR(baseIncome)}. Add bonus, freelance, or other income for this month.
+            </Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
+              <TextInput value={incomeInput} onChangeText={setIncomeInput} placeholder="0" placeholderTextColor={TXT3}
+                keyboardType="numeric"
+                style={{ flex: 1, fontSize: 24, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }} />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {incomeOverride !== null && (
+                <TouchableOpacity style={{ borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: BG_SEC }}
+                  onPress={() => { setIncomeOverride(null); setShowIncomeSheet(false) }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold' }}>Reset</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={{ flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: Number(incomeInput) > 0 ? BLUE : BG_SEC }}
+                onPress={() => { if (Number(incomeInput) > 0) { setIncomeOverride(Number(incomeInput)); setShowIncomeSheet(false) } }}
+                disabled={!(Number(incomeInput) > 0)}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: Number(incomeInput) > 0 ? '#fff' : TXT3, fontFamily: 'Manrope_700Bold' }}>
+                  Update Income
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   )

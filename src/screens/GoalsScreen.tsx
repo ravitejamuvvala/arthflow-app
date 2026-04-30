@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react'
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -384,6 +386,7 @@ export default function GoalsScreen() {
 
       {/* ── Goal Add/Edit Sheet ──────────────────────────────────── */}
       <Modal visible={showSheet} transparent animationType="slide" onRequestClose={() => setShowSheet(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowSheet(false)}>
           <View style={styles.sheetContainer} onStartShouldSetResponder={() => true}>
             <View style={styles.sheetHandle} />
@@ -493,6 +496,7 @@ export default function GoalsScreen() {
             </ScrollView>
           </View>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   )

@@ -34,15 +34,28 @@ export default function App() {
   })
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Clear stale/invalid session (e.g. expired refresh token)
+        supabase.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(session)
+      }
       setAuthLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        // Refresh token was invalid — force sign out
+        supabase.auth.signOut()
+        setSession(null)
+        setIsOnboarded(null)
+      } else {
+        setSession(session)
+        if (!session) setIsOnboarded(null)
+      }
       setAuthLoading(false)
-      if (!session) setIsOnboarded(null)
     })
 
     return () => subscription.unsubscribe()

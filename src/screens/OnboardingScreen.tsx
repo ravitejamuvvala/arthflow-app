@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useRef, useState } from 'react'
 import {
-    Animated,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -295,8 +295,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
           <View style={{ marginTop: 24 }}>
             <View style={s.sliderHeader}>
               <Text style={s.fieldLabel}>Your age</Text>
-              <View style={[s.sliderBadge, { backgroundColor: riskCfg.color + '18' }]}>
-                <Text style={[s.sliderBadgeText, { color: riskCfg.color }]}>{age} years</Text>
+              <View style={[s.sliderBadge, { backgroundColor: BLUE + '18' }]}>
+                <Text style={[s.sliderBadgeText, { color: BLUE }]}>{age} years</Text>
               </View>
             </View>
             <View
@@ -307,21 +307,12 @@ export default function OnboardingScreen({ onComplete }: Props) {
               onResponderMove={e => onAgeTouch(e.nativeEvent.pageX)}
             >
               <View style={s.sliderTrackBg} />
-              <View style={[s.sliderTrackFill, { width: `${agePct}%`, backgroundColor: riskCfg.color }]} />
-              <View style={[s.sliderThumb, { left: `${agePct}%`, backgroundColor: riskCfg.color }]} />
+              <View style={[s.sliderTrackFill, { width: `${agePct}%`, backgroundColor: BLUE }]} />
+              <View style={[s.sliderThumb, { left: `${agePct}%`, backgroundColor: BLUE }]} />
             </View>
             <View style={s.sliderMinMax}>
               <Text style={s.sliderMinMaxText}>18</Text>
               <Text style={s.sliderMinMaxText}>70</Text>
-            </View>
-          </View>
-
-          {/* Risk profile preview */}
-          <View style={[s.riskCard, { backgroundColor: riskCfg.color + '12', borderColor: riskCfg.color + '30' }]}>
-            <Text style={{ fontSize: 22 }}>{riskCfg.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={s.riskTitle}>Risk Profile: {riskCfg.label}</Text>
-              <Text style={s.riskSub}>Suggested: {riskCfg.equity}% Equity · {riskCfg.debt}% Debt</Text>
             </View>
           </View>
 

@@ -259,8 +259,7 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={st.heroUserName}>{userName}</Text>
               <Text style={st.heroUserSub}>
-                {profile?.income_type === 'business' ? '🏢 Business' : '💼 Salaried'}
-                {monthlyIncome > 0 ? ` · ${fmtInr(monthlyIncome)}/month` : ''}
+                {profile?.income_type === 'business' ? '🏢 Business' : profile?.income_type === 'freelance' ? '👤 Freelance' : '💼 Salaried'}
               </Text>
               <View style={st.heroMemberRow}>
                 <View style={st.heroMemberDot} />
