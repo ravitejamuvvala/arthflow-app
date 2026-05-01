@@ -197,14 +197,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
     // Also persist onboarding flag locally as a reliable fallback
     await AsyncStorage.setItem(`@arthflow_onboarded_${user.id}`, 'true')
 
-    // Create goals from selected chips with default targets
+    // Create goals from selected chips — target_amount = 0 so user fills in real values in Goals tab
     if (selectedGoals.length > 0) {
       const goalRows = selectedGoals.map(id => {
         const chip = GOAL_CHIPS.find(c => c.id === id)
         return {
           user_id: user.id,
           name: chip?.label ?? id,
-          target_amount: chip?.defaultTarget ?? income * 6,
+          target_amount: 0,
           saved_amount: 0,
           target_date: `${new Date().getFullYear() + 5}-12-31`,
         }
@@ -509,6 +509,17 @@ export default function OnboardingScreen({ onComplete }: Props) {
           </View>
 
           <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 16 }}>
+            {/* Plan insight card */}
+            <View style={[s.summaryCard, { backgroundColor: savePct >= 20 ? '#F0FDF4' : savePct >= 10 ? '#FEF3C7' : '#FEE2E2', borderWidth: 1, borderColor: savePct >= 20 ? '#BBF7D0' : savePct >= 10 ? '#FDE68A' : '#FCA5A5' }]}>
+              <View style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16 }}>{savePct >= 20 ? '✅' : savePct >= 10 ? '⚡' : '⚠️'}</Text>
+                  <Text style={[s.sliderLabel, { fontWeight: '800' }]}>Your #1 Insight</Text>
+                </View>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT1, lineHeight: 22 }}>{planInsight}</Text>
+              </View>
+            </View>
+
             {/* Risk profile card */}
             <View style={s.summaryCard}>
               <View style={[s.riskIconBox, { backgroundColor: riskCfg.color + '15' }]}>

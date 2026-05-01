@@ -222,9 +222,11 @@ export default function GoalsScreen() {
   }
 
   // ─── Computed ───────────────────────────────────────────────────
-  const totalSaved  = goals.reduce((s, g) => s + g.saved_amount, 0)
-  const totalTarget = goals.reduce((s, g) => s + g.target_amount, 0)
+  const configuredGoals = goals.filter(g => g.target_amount > 0)
+  const totalSaved  = configuredGoals.reduce((s, g) => s + g.saved_amount, 0)
+  const totalTarget = configuredGoals.reduce((s, g) => s + g.target_amount, 0)
   const overallPct  = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0
+  const needsSetupCount = goals.length - configuredGoals.length
   const thisYear    = new Date().getFullYear()
 
   // Year slider drag
@@ -268,15 +270,20 @@ export default function GoalsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}>
 
         {/* ── Summary Banner ─────────────────────────────────────── */}
-        {goals.length > 0 && (
+        {goals.length > 0 && totalTarget > 0 && (
           <View style={styles.heroCard}>
             <View style={styles.heroGlow} />
             <View style={styles.heroContent}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.heroLabel}>ACROSS ALL GOALS</Text>
+                  <Text style={styles.heroLabel}>ACROSS {configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''}</Text>
                   <Text style={styles.heroAmount}>{formatINR(totalSaved)}</Text>
                   <Text style={styles.heroSub}>saved of {formatINR(totalTarget)} target</Text>
+                  {needsSetupCount > 0 && (
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular', marginTop: 4 }}>
+                      {needsSetupCount} goal{needsSetupCount !== 1 ? 's' : ''} need setup ↓
+                    </Text>
+                  )}
                 </View>
                 <View style={{ position: 'relative', width: 64, height: 64 }}>
                   <GoalArc progress={overallPct} color={ORANGE} size={64} strokeWidth={6} bgColor="rgba(255,255,255,0.15)" />
@@ -303,15 +310,38 @@ export default function GoalsScreen() {
           </View>
         ) : (
           goals.map((goal) => {
-            const pct = Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
+            const needsSetup = !goal.target_amount || goal.target_amount <= 0
+            const pct = needsSetup ? 0 : Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
             const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : thisYear + 5
             const yearsLeft = Math.max(0, targetYear - thisYear)
-            const monthlySIP = yearsLeft > 0 ? Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12)) : 0
-            const proj = buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
-            const onTrack = proj.canAchieve
-            const goalColor = onTrack ? BLUE : ORANGE
+            const monthlySIP = (needsSetup || yearsLeft <= 0) ? 0 : Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12))
+            const proj = needsSetup ? null : buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
+            const onTrack = proj?.canAchieve ?? false
+            const goalColor = needsSetup ? ORANGE : (onTrack ? BLUE : ORANGE)
             const isExpanded = expandedId === goal.id
             const emoji = goalEmoji(goal.name)
+
+            // Goal needs setup — show a simple setup prompt card
+            if (needsSetup) {
+              return (
+                <TouchableOpacity key={goal.id} style={[styles.goalCard, { borderColor: ORANGE + '40' }]} onPress={() => openEdit(goal)} activeOpacity={0.8}>
+                  <View style={{ padding: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: ORANGE_L, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.goalName}>{goal.name}</Text>
+                        <Text style={{ fontSize: 13, color: ORANGE_H, fontFamily: 'Manrope_400Regular', marginTop: 2 }}>Tap to set target amount & timeline</Text>
+                      </View>
+                      <View style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: ORANGE_L }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>Set up →</Text>
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )
+            }
 
             return (
               <View key={goal.id} style={[styles.goalCard, !onTrack && styles.goalCardWarn]}>
@@ -359,6 +389,7 @@ export default function GoalsScreen() {
                   </View>
 
                   {/* SIP row */}
+                  {proj && (
                   <View style={styles.sipRow}>
                     <Text style={{ fontSize: 14, color: goalColor }}>📈</Text>
                     <Text style={styles.sipText}>Monthly needed: {formatINR(proj.simpleNeeded)}/mo</Text>
@@ -366,8 +397,10 @@ export default function GoalsScreen() {
                       {onTrack ? 'On track ✓' : 'Needs ↑'}
                     </Text>
                   </View>
+                  )}
 
                   {/* Projection toggle */}
+                  {proj && (
                   <TouchableOpacity style={[styles.projToggle, isExpanded && styles.projToggleActive]}
                     onPress={() => setExpandedId(isExpanded ? null : goal.id)} activeOpacity={0.7}>
                     <Text style={{ fontSize: 13 }}>✨</Text>
@@ -378,9 +411,10 @@ export default function GoalsScreen() {
                       {isExpanded ? '▲' : '▼'}
                     </Text>
                   </TouchableOpacity>
+                  )}
 
                   {/* Return Scenarios (expanded) */}
-                  {isExpanded && (
+                  {isExpanded && proj && (
                     <View style={{ marginTop: 12, gap: 8 }}>
                       {/* Info box */}
                       <View style={styles.infoBox}>
