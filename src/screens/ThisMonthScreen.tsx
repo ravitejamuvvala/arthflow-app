@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -46,6 +46,49 @@ const CAT_CONFIG: Record<string, { label: string; color: string; bg: string; emo
 }
 
 const EMOJI_PRESETS = ['🏠','🛒','⚡','⛽','🍽️','📱','🛍️','💪','🚗','📋','✈️','🎮','💊','📚','🎵','🏥','🐾','👔','🎁','💡']
+
+// ─── Auto-classify by keyword ───────────────────────────────────────────
+const KEYWORD_MAP: { keywords: string[]; cat: string; emoji: string }[] = [
+  { keywords: ['rent', 'house rent', 'room rent'], cat: 'essentials', emoji: '🏠' },
+  { keywords: ['electricity', 'electric', 'power', 'light bill'], cat: 'essentials', emoji: '⚡' },
+  { keywords: ['water', 'water bill'], cat: 'essentials', emoji: '💧' },
+  { keywords: ['gas', 'lpg', 'cooking gas', 'cylinder'], cat: 'essentials', emoji: '🔥' },
+  { keywords: ['grocery', 'groceries', 'vegetables', 'fruits', 'kirana', 'ration'], cat: 'essentials', emoji: '🛒' },
+  { keywords: ['milk', 'dairy', 'doodh'], cat: 'essentials', emoji: '🥛' },
+  { keywords: ['petrol', 'diesel', 'fuel', 'cng'], cat: 'essentials', emoji: '⛽' },
+  { keywords: ['wifi', 'internet', 'broadband', 'fiber'], cat: 'essentials', emoji: '📶' },
+  { keywords: ['mobile', 'phone', 'recharge', 'airtel', 'jio', 'vi'], cat: 'essentials', emoji: '📱' },
+  { keywords: ['medicine', 'medical', 'pharmacy', 'doctor', 'hospital', 'health', 'apollo', 'clinic'], cat: 'essentials', emoji: '💊' },
+  { keywords: ['insurance', 'policy', 'premium', 'lic'], cat: 'essentials', emoji: '🛡️' },
+  { keywords: ['school', 'tuition', 'fee', 'fees', 'college', 'education'], cat: 'essentials', emoji: '📚' },
+  { keywords: ['maid', 'servant', 'helper', 'cook', 'cleaner'], cat: 'essentials', emoji: '🧹' },
+  { keywords: ['transport', 'bus', 'train', 'metro', 'auto', 'uber', 'ola', 'cab', 'taxi', 'parking'], cat: 'essentials', emoji: '🚗' },
+  { keywords: ['emi', 'loan', 'home loan', 'car loan', 'personal loan', 'credit card'], cat: 'emis', emoji: '📋' },
+  { keywords: ['sip', 'mutual fund', 'mf', 'investment'], cat: 'emis', emoji: '📈' },
+  { keywords: ['zomato', 'swiggy', 'food order', 'dining', 'restaurant', 'cafe', 'coffee', 'starbucks', 'pizza', 'burger', 'biryani', 'lunch', 'dinner', 'breakfast'], cat: 'lifestyle', emoji: '🍽️' },
+  { keywords: ['shopping', 'amazon', 'flipkart', 'myntra', 'clothes', 'shoes', 'fashion', 'dress'], cat: 'lifestyle', emoji: '🛍️' },
+  { keywords: ['movie', 'movies', 'netflix', 'hotstar', 'prime', 'subscription', 'spotify', 'youtube', 'ott'], cat: 'lifestyle', emoji: '🎬' },
+  { keywords: ['gym', 'fitness', 'workout', 'yoga', 'sports'], cat: 'lifestyle', emoji: '💪' },
+  { keywords: ['travel', 'trip', 'vacation', 'holiday', 'flight', 'hotel', 'booking', 'oyo'], cat: 'lifestyle', emoji: '✈️' },
+  { keywords: ['gift', 'birthday', 'party', 'celebration'], cat: 'lifestyle', emoji: '🎁' },
+  { keywords: ['salon', 'haircut', 'spa', 'grooming', 'beauty', 'parlour'], cat: 'lifestyle', emoji: '💇' },
+  { keywords: ['game', 'gaming', 'playstation', 'xbox', 'steam'], cat: 'lifestyle', emoji: '🎮' },
+  { keywords: ['pet', 'dog', 'cat', 'vet'], cat: 'lifestyle', emoji: '🐾' },
+  { keywords: ['charity', 'donation', 'temple', 'church', 'mosque'], cat: 'other', emoji: '🙏' },
+]
+
+function autoClassify(desc: string): { cat: string; emoji: string } | null {
+  const lc = desc.toLowerCase().trim()
+  if (!lc) return null
+  for (const entry of KEYWORD_MAP) {
+    for (const kw of entry.keywords) {
+      if (lc.includes(kw) || kw.includes(lc)) {
+        return { cat: entry.cat, emoji: entry.emoji }
+      }
+    }
+  }
+  return null
+}
 
 export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refreshTrigger }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void; refreshTrigger?: number }) {
   const [loading, setLoading] = useState(true)
@@ -194,23 +237,22 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   const snapshots = getMonthlySnapshots(transactions, profile?.monthly_income)
 
   return (
-    <ScrollView
-      style={s.root}
-      contentContainerStyle={s.scrollContent}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
-    >
-      {/* ── App Bar ──────────────────────────────────────── */}
+    <View style={s.root}>
+      {/* ── App Bar (fixed) ──────────────────────────────── */}
       <View style={s.appBar}>
         <View style={s.brandRow}>
-          <ArthFlowLogo size={24} />
+          <ArthFlowLogo size={28} />
           <Text style={s.brandText}>ARTHFLOW</Text>
         </View>
-        <TouchableOpacity style={s.addBtn} onPress={() => openAdd()} activeOpacity={0.8}>
-          <Text style={s.addBtnText}>+ Add Expense</Text>
-        </TouchableOpacity>
       </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
+      >
 
       {/* ── Status Hero ──────────────────────────────────── */}
       <View style={s.heroCard}>
@@ -321,16 +363,21 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
 
         {/* Recent transactions */}
         {thisMonthExpenses.length > 0 && (
-          <View style={{ marginTop: 14 }}>
-            {thisMonthExpenses.slice(0, 5).map(t => (
-              <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.7}>
-                <View style={s.txLeft}>
-                  <Text style={s.txNote}>{t.note || t.category}</Text>
-                  <Text style={s.txDate}>{new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Text>
-                </View>
-                <Text style={s.txAmount}>-{fmtInr(t.amount)}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={{ marginTop: 14, maxHeight: 220 }}>
+            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              {thisMonthExpenses.map(t => (
+                <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.7}>
+                  <View style={s.txLeft}>
+                    <Text style={s.txNote}>{t.note || t.category}</Text>
+                    <Text style={s.txDate}>{new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Text>
+                  </View>
+                  <Text style={s.txAmount}>-{fmtInr(t.amount)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {thisMonthExpenses.length > 4 && (
+              <Text style={{ fontSize: 10, color: TXT3, textAlign: 'center', marginTop: 4, fontFamily: 'Manrope_400Regular' }}>Scroll to see all {thisMonthExpenses.length} expenses</Text>
+            )}
           </View>
         )}
       </View>
@@ -355,6 +402,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       )}
 
       <View style={{ height: 20 }} />
+      </ScrollView>
 
       {/* ── Expense Sheet ────────────────────────────────── */}
       <Modal visible={showExpSheet} transparent animationType="slide" onRequestClose={() => setShowExpSheet(false)}>
@@ -375,7 +423,11 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               <TouchableOpacity onPress={() => setShowEmojiPicker(p => !p)} style={s.emojiBtn}>
                 <Text style={{ fontSize: 24 }}>{expEmoji}</Text>
               </TouchableOpacity>
-              <TextInput value={expDesc} onChangeText={setExpDesc} placeholder="What did you spend on?" placeholderTextColor={TXT3} style={s.descInput} />
+              <TextInput value={expDesc} onChangeText={(text) => {
+                setExpDesc(text)
+                const match = autoClassify(text)
+                if (match) { setExpCat(match.cat); setExpEmoji(match.emoji) }
+              }} placeholder="What did you spend on?" placeholderTextColor={TXT3} style={s.descInput} />
             </View>
 
             {showEmojiPicker && (
@@ -465,43 +517,41 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+    </View>
   )
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 40 },
   center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
 
-  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingVertical: 4, paddingHorizontal: 20 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandText: { fontSize: 15, fontWeight: '700', color: '#1E293B', letterSpacing: 1.2, fontFamily: 'Manrope_700Bold' },
-  addBtn: { backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnText: { fontSize: 12, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
 
   // Hero
-  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 20, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
+  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
-  heroMonth: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
-  heroGreeting: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 28, marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroMonth: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
+  heroGreeting: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 30, marginTop: 2, fontFamily: 'Manrope_700Bold' },
 
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12 },
-  statusText: { fontSize: 13, fontWeight: '800', textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
-  statusMessage: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontFamily: 'Manrope_400Regular' },
+  statusText: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
+  statusMessage: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontFamily: 'Manrope_400Regular' },
 
   flowRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
   flowBox: { flex: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.1)' },
-  flowLabel: { fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
-  flowValue: { fontSize: 15, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  flowLabel: { fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
+  flowValue: { fontSize: 16, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Problem card
   problemCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
   problemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  problemTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
-  problemMessage: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', marginBottom: 14 },
+  problemTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  problemMessage: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular', marginBottom: 14 },
   ctaBtn: { backgroundColor: BLUE, borderRadius: 14, paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   ctaBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
   ctaArrow: { fontSize: 16, color: '#fff', fontWeight: '800' },
@@ -513,31 +563,31 @@ const s = StyleSheet.create({
 
   // Blueprint
   bpBadge: { backgroundColor: BLUE_L, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  bpBadgeText: { fontSize: 11, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
-  bpLabel: { fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  bpBadgeText: { fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  bpLabel: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   bpPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  bpPillText: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  bpPillText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative' },
   barFill: { position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3 },
   barMarker: { position: 'absolute', top: -3, width: 2, height: 12, backgroundColor: '#9CA3AF', borderRadius: 1 },
 
   // Category chips
   catChip: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1 },
-  catAmount: { fontSize: 14, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
-  catLabel: { fontSize: 9, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
+  catAmount: { fontSize: 15, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
+  catLabel: { fontSize: 10, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
 
   // Transactions
   txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC },
   txLeft: { flex: 1 },
-  txNote: { fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  txDate: { fontSize: 11, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
-  txAmount: { fontSize: 14, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
+  txNote: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  txDate: { fontSize: 12, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  txAmount: { fontSize: 15, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
 
   // Trend
   trendBox: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
-  trendMonth: { fontSize: 11, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
-  trendPct: { fontSize: 18, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
-  trendLabel: { fontSize: 9, color: TXT3, fontFamily: 'Manrope_400Regular' },
+  trendMonth: { fontSize: 12, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  trendPct: { fontSize: 20, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
+  trendLabel: { fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular' },
   trendBarTrack: { width: 6, height: 40, borderRadius: 3, backgroundColor: BG_SEC, marginTop: 6, overflow: 'hidden', justifyContent: 'flex-end' },
   trendBarFill: { width: 6, borderRadius: 3 },
 
@@ -549,13 +599,13 @@ const s = StyleSheet.create({
   sheetClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
 
   emojiBtn: { width: 52, height: 52, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
-  descInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, fontSize: 14, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  descInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, fontSize: 15, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 12 },
   emojiItem: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 8 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   catPickChip: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
-  catPickText: { fontSize: 9, fontWeight: '800', color: TXT3, textTransform: 'uppercase', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  catPickText: { fontSize: 10, fontWeight: '800', color: TXT3, textTransform: 'uppercase', marginTop: 2, fontFamily: 'Manrope_700Bold' },
   deleteBtn: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: RED },
   saveBtn: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: BLUE },
   saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },

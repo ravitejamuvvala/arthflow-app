@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
     ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Modal,
+    PanResponder,
     Platform,
     RefreshControl,
     ScrollView,
@@ -11,7 +12,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import GoalArc from '../components/GoalArc'
@@ -38,6 +39,17 @@ const BORDER   = '#E5E7EB'
 const BG_SEC   = '#F1F5F9'
 
 const GOAL_EMOJIS = ['🏠','✈️','🎓','🚗','💍','🛡️','🌅','💻','📱','🏋️','🏖️','🌏','👶','🎸','⛵','🏡','💰','🎯','📈','🌱']
+
+// ─── Preset Goals ───────────────────────────────────────────────────────
+const PRESET_GOALS = [
+  { name: 'Child Education',  emoji: '🎓', defaultYears: 10, defaultTarget: 2500000 },
+  { name: 'Child Marriage',   emoji: '💍', defaultYears: 15, defaultTarget: 3000000 },
+  { name: 'Buy a Car',        emoji: '🚗', defaultYears: 3,  defaultTarget: 1000000 },
+  { name: "Mom's Corpus",     emoji: '🙏', defaultYears: 5,  defaultTarget: 2000000 },
+  { name: 'Buy a House',      emoji: '🏠', defaultYears: 10, defaultTarget: 5000000 },
+  { name: 'Emergency Fund',   emoji: '🛡️', defaultYears: 2,  defaultTarget: 500000  },
+  { name: 'Retirement Fund',  emoji: '🌅', defaultYears: 20, defaultTarget: 10000000 },
+] as const
 
 const PRIORITY_CONFIG = {
   high:   { label: 'High',   color: RED,    bg: '#FEE2E2' },
@@ -101,6 +113,7 @@ export default function GoalsScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [showSheet, setShowSheet] = useState(false)
+  const [showPresets, setShowPresets] = useState(false)
   const [editGoal, setEditGoal] = useState<Goal | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -128,6 +141,35 @@ export default function GoalsScreen() {
   const onRefresh = async () => { setRefreshing(true); await fetchGoals(); setRefreshing(false) }
 
   const openAdd = () => {
+    setShowPresets(true)
+  }
+
+  const selectPreset = (preset: typeof PRESET_GOALS[number]) => {
+    // Check if goal with this name already exists
+    const existing = goals.find(g => g.name.toLowerCase() === preset.name.toLowerCase())
+    if (existing) {
+      setShowPresets(false)
+      Alert.alert(
+        'Goal already exists',
+        `"${preset.name}" is already in your goals. Would you like to modify it?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Modify', onPress: () => openEdit(existing) },
+        ]
+      )
+      return
+    }
+    setShowPresets(false)
+    setEditGoal(null)
+    setFEmoji(preset.emoji); setFName(preset.name)
+    setFTarget(String(preset.defaultTarget)); setFSaved('0')
+    setFYear(new Date().getFullYear() + preset.defaultYears)
+    setFMonthly(''); setFPriority('medium')
+    setShowSheet(true)
+  }
+
+  const openCustomGoal = () => {
+    setShowPresets(false)
     setEditGoal(null)
     setFEmoji('🎯'); setFName(''); setFTarget(''); setFSaved('0')
     setFYear(new Date().getFullYear() + 5); setFMonthly(''); setFPriority('medium')
@@ -185,29 +227,45 @@ export default function GoalsScreen() {
   const overallPct  = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0
   const thisYear    = new Date().getFullYear()
 
+  // Year slider drag
+  const sliderRef = useRef<View>(null)
+  const sliderPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => updateYearFromTouch(e.nativeEvent.pageX),
+      onPanResponderMove: (e) => updateYearFromTouch(e.nativeEvent.pageX),
+    })
+  ).current
+
+  const updateYearFromTouch = (pageX: number) => {
+    sliderRef.current?.measureInWindow((x, _y, width) => {
+      if (width <= 0) return
+      const pct = Math.max(0, Math.min(1, (pageX - x) / width))
+      const yr = Math.round(thisYear + pct * 40)
+      setFYear(Math.max(thisYear, Math.min(thisYear + 40, yr)))
+    })
+  }
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={BLUE} size="large" /></View>
   }
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}>
-
-        {/* ── App Bar ────────────────────────────────────────────── */}
-        <View style={styles.appBar}>
-          <View style={styles.brandRow}>
-            <ArthFlowLogo size={22} />
-            <View style={styles.divider} />
-            <View>
-              <Text style={styles.barTitle}>Goals</Text>
-              <Text style={styles.barSub}>{goals.length} active · {overallPct}% overall</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.8}>
-            <Text style={styles.addBtnText}>+ New Goal</Text>
-          </TouchableOpacity>
+      {/* ── App Bar (fixed) ────────────────────────────────────── */}
+      <View style={styles.appBar}>
+        <View style={styles.brandRow}>
+          <ArthFlowLogo size={28} />
+          <Text style={styles.brandText}>ARTHFLOW</Text>
         </View>
+        <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.8}>
+          <Text style={styles.addBtnText}>+ New Goal</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}>
 
         {/* ── Summary Banner ─────────────────────────────────────── */}
         {goals.length > 0 && (
@@ -438,21 +496,41 @@ export default function GoalsScreen() {
               </View>
 
               {/* Target Year */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <Text style={styles.formLabel}>TARGET YEAR</Text>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>
-                  {fYear} · {fYear - thisYear > 0 ? `${fYear - thisYear} yrs` : 'this year'}
+                <Text style={{ fontSize: 12, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_400Regular' }}>
+                  {fYear - thisYear > 0 ? `${fYear - thisYear} yrs from now` : 'this year'}
                 </Text>
               </View>
+              {/* Year input + slider */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <TouchableOpacity onPress={() => setFYear(Math.max(thisYear, fYear - 1))}
-                  style={styles.yearBtn}><Text style={styles.yearBtnText}>−</Text></TouchableOpacity>
-                <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: BG_SEC }}>
-                  <View style={{ height: 6, borderRadius: 3, backgroundColor: BLUE,
-                    width: `${Math.min(100, ((fYear - thisYear) / 40) * 100)}%` }} />
+                <View ref={sliderRef} style={{ flex: 1, height: 28, justifyContent: 'center' }} {...sliderPan.panHandlers}>
+                  <View style={{ height: 6, borderRadius: 3, backgroundColor: BG_SEC }}>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: BLUE,
+                      width: `${Math.min(100, ((fYear - thisYear) / 40) * 100)}%` }} />
+                  </View>
+                  <View style={{
+                    position: 'absolute',
+                    left: `${Math.min(100, ((fYear - thisYear) / 40) * 100)}%`,
+                    marginLeft: -10,
+                    width: 20, height: 20, borderRadius: 10,
+                    backgroundColor: '#fff', borderWidth: 2.5, borderColor: BLUE,
+                    shadowColor: BLUE, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 4,
+                  }} />
                 </View>
-                <TouchableOpacity onPress={() => setFYear(Math.min(thisYear + 40, fYear + 1))}
-                  style={styles.yearBtn}><Text style={styles.yearBtnText}>+</Text></TouchableOpacity>
+                <View style={{ borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: BLUE + '30', alignItems: 'center' }}>
+                  <TextInput
+                    value={String(fYear)}
+                    onChangeText={(text) => {
+                      const n = parseInt(text, 10)
+                      if (!isNaN(n) && n >= thisYear && n <= thisYear + 40) setFYear(n)
+                      else if (text === '') setFYear(thisYear)
+                    }}
+                    keyboardType="numeric"
+                    maxLength={4}
+                    style={{ fontSize: 18, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold', textAlign: 'center', minWidth: 52, padding: 0 }}
+                  />
+                </View>
               </View>
 
               {/* Monthly SIP */}
@@ -498,6 +576,48 @@ export default function GoalsScreen() {
         </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Preset Goals Picker ──────────────────────────────────── */}
+      <Modal visible={showPresets} transparent animationType="slide" onRequestClose={() => setShowPresets(false)}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowPresets(false)}>
+          <View style={styles.sheetContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Choose a Goal</Text>
+              <TouchableOpacity onPress={() => setShowPresets(false)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 14, color: TXT2 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.presetGrid}>
+              {PRESET_GOALS.map((preset) => {
+                const exists = goals.some(g => g.name.toLowerCase() === preset.name.toLowerCase())
+                return (
+                  <TouchableOpacity key={preset.name} onPress={() => selectPreset(preset)}
+                    style={[styles.presetTile, exists && styles.presetTileExists]} activeOpacity={0.7}>
+                    {exists && (
+                      <View style={styles.presetExistsBadge}>
+                        <Text style={styles.presetExistsText}>Added</Text>
+                      </View>
+                    )}
+                    <Text style={{ fontSize: 28 }}>{preset.emoji}</Text>
+                    <Text style={styles.presetName}>{preset.name}</Text>
+                    <Text style={styles.presetMeta}>
+                      {formatINR(preset.defaultTarget)} · {preset.defaultYears}y
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+              <TouchableOpacity style={styles.presetTileCustom} onPress={openCustomGoal} activeOpacity={0.7}>
+                <Text style={{ fontSize: 28 }}>✏️</Text>
+                <Text style={styles.presetName}>Custom Goal</Text>
+                <Text style={styles.presetMeta}>Set your own</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   )
 }
@@ -505,25 +625,26 @@ export default function GoalsScreen() {
 // ─── Styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 48 },
   center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
 
   // App Bar
-  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingVertical: 4, paddingHorizontal: 20 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  divider: { width: 1, height: 18, backgroundColor: BORDER, marginHorizontal: 4 },
-  barTitle: { fontSize: 13, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  barSub: { fontSize: 10, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 4 },
-  addBtnText: { fontSize: 12, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
+  divider: { width: 1, height: 20, backgroundColor: BORDER, marginHorizontal: 6 },
+  barTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  barSub: { fontSize: 12, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 4 },
+  addBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Hero
   heroCard: { borderRadius: 20, padding: 16, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 40, elevation: 12 },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
-  heroLabel: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
-  heroAmount: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
-  heroSub: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  heroLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
+  heroAmount: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroSub: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
   heroArcText: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   heroArcPct: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
@@ -531,41 +652,41 @@ const styles = StyleSheet.create({
   goalCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   goalCardWarn: { borderColor: '#FDE68A' },
   offTrackBanner: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: ORANGE_L },
-  offTrackText: { fontSize: 11, fontWeight: '700', color: ORANGE_H, fontFamily: 'Manrope_700Bold' },
+  offTrackText: { fontSize: 12, fontWeight: '700', color: ORANGE_H, fontFamily: 'Manrope_700Bold' },
   goalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   goalArcOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   goalArcPct: { fontSize: 12, fontWeight: '800', lineHeight: 14, fontFamily: 'Manrope_700Bold' },
-  goalName: { fontSize: 14, fontWeight: '800', color: TXT1, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
-  goalAmounts: { fontSize: 12, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_700Bold' },
-  goalYears: { fontSize: 11, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  goalName: { fontSize: 15, fontWeight: '800', color: TXT1, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
+  goalAmounts: { fontSize: 13, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  goalYears: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
   editBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
 
   // SIP row
   sipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 12 },
-  sipText: { flex: 1, fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  sipStatus: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  sipText: { flex: 1, fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sipStatus: { fontSize: 13, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
 
   // Projection toggle
   projToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 10, backgroundColor: TEAL_L },
   projToggleActive: { backgroundColor: TEAL },
-  projToggleText: { fontSize: 12, fontWeight: '800', color: TEAL, fontFamily: 'Manrope_700Bold' },
+  projToggleText: { fontSize: 13, fontWeight: '800', color: TEAL, fontFamily: 'Manrope_700Bold' },
 
   // Info box
   infoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 16, padding: 12, backgroundColor: BLUE_L },
-  infoText: { flex: 1, fontSize: 12, fontWeight: '600', color: BLUE, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
+  infoText: { flex: 1, fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
 
   // Scenario card
   scenarioCard: { borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
   scenarioHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
-  scenarioTitle: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  scenarioRisk: { fontSize: 10, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
-  scenarioNeedLabel: { fontSize: 10, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  scenarioNeedVal: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioTitle: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioRisk: { fontSize: 11, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
+  scenarioNeedLabel: { fontSize: 11, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioNeedVal: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioBody: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: BG_SEC },
-  scenarioBodyLabel: { fontSize: 10, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  scenarioBodyVal: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioBodyLabel: { fontSize: 11, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioBodyVal: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioResultBadge: { borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
-  scenarioResultText: { fontSize: 10, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioResultText: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioAssets: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: BG_SEC },
   scenarioAssetsText: { fontSize: 10, fontWeight: '600', color: TXT2, lineHeight: 16, fontFamily: 'Manrope_400Regular' },
 
@@ -575,8 +696,8 @@ const styles = StyleSheet.create({
 
   // Empty
   emptyCard: { backgroundColor: '#fff', borderRadius: 20, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
-  emptyTitle: { fontSize: 15, fontWeight: '800', color: TXT1, marginTop: 12, fontFamily: 'Manrope_700Bold' },
-  emptySub: { fontSize: 13, fontWeight: '500', color: TXT3, textAlign: 'center', marginTop: 4, marginBottom: 20, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: TXT1, marginTop: 12, fontFamily: 'Manrope_700Bold' },
+  emptySub: { fontSize: 14, fontWeight: '500', color: TXT3, textAlign: 'center', marginTop: 4, marginBottom: 20, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
   primaryBtn: { backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 20, paddingVertical: 14, shadowColor: BLUE, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },
   primaryBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
@@ -588,18 +709,30 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
 
   // Form
-  formInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, fontSize: 14, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  formLabel: { fontSize: 11, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
-  currencyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 20 },
-  currencyPrefix: { fontSize: 16, fontWeight: '700', color: TXT3 },
-  currencyInput: { flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  formInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: BG_SEC, fontSize: 16, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  formLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
+  currencyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: BG_SEC, marginBottom: 20 },
+  currencyPrefix: { fontSize: 18, fontWeight: '700', color: TXT3 },
+  currencyInput: { flex: 1, fontSize: 24, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 16 },
   emojiBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   yearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
   yearBtnText: { fontSize: 18, fontWeight: '700', color: TXT1 },
+  yearPreset: { flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
+  yearPresetText: { fontSize: 12, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
   priorityChip: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5 },
-  priorityChipText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  priorityChipText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   deleteBtn: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: RED },
   saveBtn: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  saveBtnText: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+
+  // Preset picker — tile grid
+  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  presetTile: { width: '47%' as any, borderRadius: 16, padding: 14, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center', minHeight: 100, position: 'relative' },
+  presetTileExists: { backgroundColor: '#F0FDF4', opacity: 0.75 },
+  presetTileCustom: { width: '47%' as any, borderRadius: 16, padding: 14, alignItems: 'center', justifyContent: 'center', minHeight: 100, borderWidth: 1.5, borderColor: BLUE + '30', borderStyle: 'dashed' },
+  presetName: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', marginTop: 8, textAlign: 'center' },
+  presetMeta: { fontSize: 12, fontWeight: '600', color: TXT3, marginTop: 3, fontFamily: 'Manrope_400Regular', textAlign: 'center' },
+  presetExistsBadge: { position: 'absolute', top: 8, right: 8, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: GREEN_L },
+  presetExistsText: { fontSize: 9, fontWeight: '800', color: GREEN_H, fontFamily: 'Manrope_700Bold' },
 })

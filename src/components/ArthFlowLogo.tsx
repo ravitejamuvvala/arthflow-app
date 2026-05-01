@@ -6,27 +6,32 @@ type Props = {
 }
 
 export default function ArthFlowLogo({ size = 32 }: Props) {
-  const sw  = (size / 32) * 3.2
-  const sw2 = (size / 32) * 2.6
-  const sw3 = (size / 32) * 2.2
+  const sw  = (size / 32) * 3.6
+  const sw2 = (size / 32) * 3.0
+  const sw3 = (size / 32) * 2.4
 
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
       <Defs>
-        <LinearGradient id="goldGrad" x1="15" y1="92" x2="82" y2="6" gradientUnits="userSpaceOnUse">
-          <Stop offset="0%" stopColor="#A86400" />
-          <Stop offset="35%" stopColor="#C8860A" />
-          <Stop offset="70%" stopColor="#E0A820" />
-          <Stop offset="100%" stopColor="#F0CC50" />
+        <LinearGradient id="goldGrad" x1="10" y1="95" x2="90" y2="5" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#7A4F00" />
+          <Stop offset="25%" stopColor="#A67C00" />
+          <Stop offset="50%" stopColor="#C9981A" />
+          <Stop offset="75%" stopColor="#DAA520" />
+          <Stop offset="100%" stopColor="#E8BF44" />
+        </LinearGradient>
+        <LinearGradient id="goldFill" x1="30" y1="90" x2="70" y2="10" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#A67C00" stopOpacity="0.08" />
+          <Stop offset="100%" stopColor="#DAA520" stopOpacity="0.04" />
         </LinearGradient>
       </Defs>
-      {/* Outer teardrop frame */}
+      {/* Outer teardrop frame — subtle fill for emboss */}
       <Path
         d="M50,4 C68,18 86,42 86,65 C86,83 69,95 50,95 C31,95 14,83 14,65 C14,42 32,18 50,4 Z"
         stroke="url(#goldGrad)"
         strokeWidth={sw}
         strokeLinejoin="round"
-        fill="none"
+        fill="url(#goldFill)"
       />
       {/* Center stem */}
       <Path

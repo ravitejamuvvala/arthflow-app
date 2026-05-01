@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
     Dimensions,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -100,6 +102,7 @@ function AssetSheet({ cfg, currentValue, onClose, onSave }: {
 
   return (
     <Modal visible animationType="slide" transparent>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={sh.overlay}>
         <TouchableOpacity style={sh.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={sh.sheet}>
@@ -139,12 +142,6 @@ function AssetSheet({ cfg, currentValue, onClose, onSave }: {
             </View>
           </View>
 
-          {/* Tip */}
-          <View style={[sh.tipBox, { backgroundColor: cfg.bg }]}>
-            <Text style={{ fontSize: 14 }}>💡</Text>
-            <Text style={[sh.tipText, { color: cfg.color }]}>{cfg.tips}</Text>
-          </View>
-
           {/* Save button */}
           <TouchableOpacity
             onPress={() => { onSave(Number(value) || 0); onClose() }}
@@ -155,6 +152,7 @@ function AssetSheet({ cfg, currentValue, onClose, onSave }: {
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -238,7 +236,10 @@ export default function WealthScreen() {
     <View style={s.root}>
       {/* ── App Bar ──────────────────────────────────────────── */}
       <View style={s.appBar}>
-        <ArthFlowLogo size={28} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <ArthFlowLogo size={28} />
+          <Text style={s.brandText}>ARTHFLOW</Text>
+        </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={s.appBarLabel}>NET WORTH</Text>
           <Text style={s.appBarValue}>{fmtInr(nw)}</Text>
@@ -352,28 +353,27 @@ const s = StyleSheet.create({
   // App Bar
   appBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, height: 56, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: BORDER,
-    shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 24,
+    paddingHorizontal: 20, paddingVertical: 4, marginBottom: 2, backgroundColor: '#fff',
   },
-  appBarLabel: { fontFamily: F_BOLD, fontSize: 10, fontWeight: '700', color: TXT3, letterSpacing: 0.8, textTransform: 'uppercase' as const },
-  appBarValue: { fontFamily: F_BOLD, fontSize: 16, fontWeight: '800', color: '#E0A820' },
+  appBarLabel: { fontFamily: F_BOLD, fontSize: 11, fontWeight: '700', color: TXT3, letterSpacing: 0.8, textTransform: 'uppercase' as const },
+  appBarValue: { fontFamily: F_BOLD, fontSize: 17, fontWeight: '800', color: '#E0A820' },
+  brandText: { fontSize: 17, fontWeight: '700' as const, color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
 
   // Hero
-  heroPad: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 },
+  heroPad: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
   heroCard: {
     borderRadius: 24, padding: 20,
     backgroundColor: '#0B1B4A',
     shadowColor: BLUE, shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.45, shadowRadius: 60,
   },
-  heroLabel: { fontFamily: F_BOLD, fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const, letterSpacing: 1.2, marginBottom: 4 },
+  heroLabel: { fontFamily: F_BOLD, fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const, letterSpacing: 1.2, marginBottom: 4 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 4 },
-  heroRupee: { fontFamily: F_BOLD, fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', lineHeight: 38 },
-  heroAmount: { fontFamily: F_BOLD, fontSize: 38, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5 },
-  heroHint: { fontFamily: F_REG, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.4)' },
+  heroRupee: { fontFamily: F_BOLD, fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.5)', lineHeight: 40 },
+  heroAmount: { fontFamily: F_BOLD, fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5 },
+  heroHint: { fontFamily: F_REG, fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.4)' },
 
   // Section
-  sectionTitle: { fontFamily: F_BOLD, fontSize: 14, fontWeight: '800', color: TXT1, marginBottom: 12 },
+  sectionTitle: { fontFamily: F_BOLD, fontSize: 15, fontWeight: '800', color: TXT1, marginBottom: 12 },
 
   // Grid
   gridPad: { paddingHorizontal: 16, paddingBottom: 12 },
@@ -386,11 +386,11 @@ const s = StyleSheet.create({
   assetTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   assetEmoji: { width: 38, height: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   assetBadge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
-  assetBadgeText: { fontFamily: F_BOLD, fontSize: 9, fontWeight: '800' },
-  assetName: { fontFamily: F_BOLD, fontSize: 12, fontWeight: '800', color: TXT1, marginBottom: 2 },
-  assetSub: { fontFamily: F_REG, fontSize: 10, fontWeight: '500', color: TXT3, marginBottom: 6 },
+  assetBadgeText: { fontFamily: F_BOLD, fontSize: 10, fontWeight: '800' },
+  assetName: { fontFamily: F_BOLD, fontSize: 13, fontWeight: '800', color: TXT1, marginBottom: 2 },
+  assetSub: { fontFamily: F_REG, fontSize: 11, fontWeight: '500', color: TXT3, marginBottom: 6 },
   assetBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  assetVal: { fontFamily: F_BOLD, fontSize: 16, fontWeight: '800' },
+  assetVal: { fontFamily: F_BOLD, fontSize: 17, fontWeight: '800' },
 
   // Allocation
   allocCard: {
@@ -402,8 +402,8 @@ const s = StyleSheet.create({
   allocLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { fontFamily: F_REG, fontSize: 11, fontWeight: '600', color: TXT2 },
-  legendPct: { fontFamily: F_BOLD, fontSize: 11, fontWeight: '800', color: TXT1 },
+  legendLabel: { fontFamily: F_REG, fontSize: 12, fontWeight: '600', color: TXT2 },
+  legendPct: { fontFamily: F_BOLD, fontSize: 12, fontWeight: '800', color: TXT1 },
 
   // Tip
   tipCard: {
@@ -411,8 +411,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: TEAL + '20',
     flexDirection: 'row', alignItems: 'flex-start',
   },
-  tipTitle: { fontFamily: F_BOLD, fontSize: 13, fontWeight: '800', color: '#0F766E', marginBottom: 4 },
-  tipDesc: { fontFamily: F_REG, fontSize: 12, fontWeight: '500', color: '#0F766E', lineHeight: 18, opacity: 0.85 },
+  tipTitle: { fontFamily: F_BOLD, fontSize: 14, fontWeight: '800', color: '#0F766E', marginBottom: 4 },
+  tipDesc: { fontFamily: F_REG, fontSize: 13, fontWeight: '500', color: '#0F766E', lineHeight: 19, opacity: 0.85 },
 })
 
 // ─── Sheet Styles ─────────────────────────────────────────────────────────────
@@ -427,19 +427,19 @@ const sh = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   emojiBox: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontFamily: F_BOLD, fontSize: 17, fontWeight: '800', color: TXT1 },
-  headerSub: { fontFamily: F_REG, fontSize: 12, fontWeight: '500', color: TXT3 },
+  headerSub: { fontFamily: F_REG, fontSize: 13, fontWeight: '500', color: TXT3 },
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
-  desc: { fontFamily: F_REG, fontSize: 13, fontWeight: '500', color: TXT2, lineHeight: 21, marginBottom: 16, marginTop: 8, paddingLeft: 4 },
+  desc: { fontFamily: F_REG, fontSize: 14, fontWeight: '500', color: TXT2, lineHeight: 22, marginBottom: 16, marginTop: 8, paddingLeft: 4 },
   inputCard: {
     borderRadius: 20, padding: 20, alignItems: 'center',
     backgroundColor: '#0B1B4A', marginBottom: 12,
   },
-  inputLabel: { fontFamily: F_BOLD, fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 },
+  inputLabel: { fontFamily: F_BOLD, fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 },
   inputRow: { flexDirection: 'row', alignItems: 'center' },
   rupee: { fontFamily: F_BOLD, fontSize: 32, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginRight: 4 },
   input: { fontFamily: F_BOLD, fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120 },
   tipBox: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, marginBottom: 20 },
-  tipText: { fontFamily: F_BOLD, fontSize: 12, fontWeight: '600', lineHeight: 18, flex: 1 },
+  tipText: { fontFamily: F_BOLD, fontSize: 13, fontWeight: '600', lineHeight: 19, flex: 1 },
   saveBtn: {
     borderRadius: 16, paddingVertical: 14, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center', gap: 8,

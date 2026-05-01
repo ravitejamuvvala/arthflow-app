@@ -3,8 +3,8 @@ import { NotoSerif_700Bold, useFonts } from '@expo-google-fonts/noto-serif'
 import { Feather } from '@expo/vector-icons'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
 import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
 
@@ -15,8 +15,11 @@ import LoginScreen from './src/screens/LoginScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
 import ProfileScreen from './src/screens/ProfileScreen'
 import ThisMonthScreen from './src/screens/ThisMonthScreen'
+import WealthScreen from './src/screens/WealthScreen'
 
 SplashScreen.preventAutoHideAsync()
+
+const TOP_INSET = initialWindowMetrics?.insets.top ?? 0
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -112,11 +115,16 @@ export default function App() {
     )
   }
 
+  // Status bar style per tab
+  const darkBar = activeTab === 'coach'
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.screen}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle={darkBar ? 'dark-content' : 'light-content'} translucent backgroundColor="transparent" />
+      <View style={[styles.screen, { paddingTop: TOP_INSET }]}>
         {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
         {activeTab === 'plan' && <GoalsScreen />}
+        {activeTab === 'wealth' && <WealthScreen />}
         {activeTab === 'coach' && <CoachScreen />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
@@ -125,6 +133,7 @@ export default function App() {
         {[
           { key: 'home', icon: 'home', label: 'Home' },
           { key: 'plan', icon: 'target', label: 'Plan' },
+          { key: 'wealth', icon: 'briefcase', label: 'Wealth' },
           { key: 'coach', icon: 'zap', label: 'Coach' },
           { key: 'profile', icon: 'user', label: 'Me' },
         ].map(tab => (
@@ -165,8 +174,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingBottom: 10,
-    paddingTop: 8,
+    paddingBottom: 6,
+    paddingTop: 6,
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 8,

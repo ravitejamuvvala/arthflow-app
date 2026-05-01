@@ -1,20 +1,19 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -37,28 +36,6 @@ const BORDER  = '#E5E7EB'
 const BG_SEC  = '#F1F5F9'
 
 const { width: SCREEN_W } = Dimensions.get('window')
-const INDIGO   = '#6366F1'
-const INDIGO_L = '#E0E7FF'
-const TEAL_L   = '#CCFBF1'
-
-// ─── Asset Config for Wealth ──────────────────────────────────────────
-interface AssetPortfolio {
-  liquidCash: number; mutualFunds: number; stocks: number; epf: number;
-  ppf: number; gold: number; realEstate: number; other: number;
-}
-const defaultAssets: AssetPortfolio = { liquidCash: 0, mutualFunds: 0, stocks: 0, epf: 0, ppf: 0, gold: 0, realEstate: 0, other: 0 }
-const ASSET_STORAGE_KEY = '@arthflow_assets'
-const ASSET_CONFIG: { key: keyof AssetPortfolio; label: string; emoji: string; color: string; bg: string }[] = [
-  { key: 'liquidCash',  label: 'Cash & Savings', emoji: '💵', color: GREEN,  bg: GREEN_L },
-  { key: 'mutualFunds', label: 'Mutual Funds',   emoji: '📈', color: BLUE,   bg: BLUE_L },
-  { key: 'stocks',      label: 'Stocks',          emoji: '📊', color: INDIGO, bg: INDIGO_L },
-  { key: 'epf',         label: 'EPF / PF',        emoji: '🏦', color: TEAL,   bg: TEAL_L },
-  { key: 'ppf',         label: 'PPF',             emoji: '🔒', color: '#8B5CF6', bg: '#EDE9FE' },
-  { key: 'gold',        label: 'Gold',            emoji: '🥇', color: ORANGE, bg: ORANGE_L },
-  { key: 'realEstate',  label: 'Real Estate',     emoji: '🏠', color: RED,    bg: '#FEE2E2' },
-  { key: 'other',       label: 'Other Assets',    emoji: '🔧', color: TXT2,   bg: BG_SEC },
-]
-function totalNetWorth(a: AssetPortfolio) { return Object.values(a).reduce((s, v) => s + v, 0) }
 
 type ProtectionStatus = 'missing' | 'partial' | 'ok'
 interface ProtectionItem { id: string; label: string; status: ProtectionStatus; icon: string; desc: string; impact: string }
@@ -110,26 +87,6 @@ export default function ProfileScreen() {
   const [editType, setEditType]       = useState<string>('salary')
   const [showSignOut, setShowSignOut] = useState(false)
   const [showValues, setShowValues] = useState(false)
-
-  // Wealth / Assets
-  const [assets, setAssets] = useState<AssetPortfolio>(defaultAssets)
-  const [editingAsset, setEditingAsset] = useState<keyof AssetPortfolio | null>(null)
-  const [assetInput, setAssetInput] = useState('')
-
-  // Load assets from AsyncStorage
-  useEffect(() => {
-    AsyncStorage.getItem(ASSET_STORAGE_KEY).then(raw => {
-      if (raw) try { setAssets(JSON.parse(raw)) } catch {}
-    })
-  }, [])
-
-  const saveAssetValue = (key: keyof AssetPortfolio, val: number) => {
-    setAssets(prev => {
-      const next = { ...prev, [key]: val }
-      AsyncStorage.setItem(ASSET_STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
-  }
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -200,36 +157,11 @@ export default function ProfileScreen() {
     ])
   }
 
-  const totalSaved = goals.reduce((s, g) => s + g.saved_amount, 0)
   const income     = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const expenses   = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const savings    = income - expenses
   const monthlyIncome = profile?.monthly_income ?? 0
 
-  // Calculate monthly history (last 4 months)
-  const getMonthlyHistory = () => {
-    const months: { month: string; saved: number; target: number; current: boolean }[] = []
-    const now = new Date()
-    for (let i = 3; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
-      const monthName = d.toLocaleString('default', { month: 'short' })
-
-      const monthTx = allTransactions.filter(t => {
-        const td = new Date(t.date)
-        return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear()
-      })
-      const monthIncome = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-      const monthExpense = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-      const saved = Math.max(monthIncome - monthExpense, 0)
-      const target = monthlyIncome > 0 ? Math.round(monthlyIncome * 0.3) : 20000
-
-      months.push({ month: monthName, saved, target, current: i === 0 })
-    }
-    return months
-  }
-
-  const monthlyHistory = loading ? [] : getMonthlyHistory()
   const missingCount = PROTECTION_ITEMS.filter(p => p.status !== 'ok').length
 
   // Streak: count consecutive months with positive savings
@@ -250,7 +182,6 @@ export default function ProfileScreen() {
     return streak
   }
 
-  const netWorth = totalSaved + goals.reduce((s, g) => s + (g.current_amount || 0), 0) + totalNetWorth(assets)
   const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
   const age = profile?.age ?? 28
   const riskLabel = age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
@@ -267,27 +198,24 @@ export default function ProfileScreen() {
   const streak = getStreak()
 
   return (
-    <ScrollView
-      style={st.container}
-      contentContainerStyle={st.content}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
-    >
-      {/* App Bar */}
+    <View style={st.container}>
+      {/* App Bar (fixed) */}
       <View style={st.appBar}>
         <View style={st.brandRow}>
-          <ArthFlowLogo size={22} />
+          <ArthFlowLogo size={28} />
           <Text style={st.brandText}>ARTHFLOW</Text>
-          <View style={st.divider} />
-          <View>
-            <Text style={st.barTitle}>Profile</Text>
-            <Text style={st.barSub}>{userName}</Text>
-          </View>
         </View>
         <TouchableOpacity style={st.editBtn} activeOpacity={0.7} onPress={() => { setEditName(userName); setEditLastName(''); setEditDob(profile?.dob || ''); setEditPhone(profile?.phone || ''); setEditEmail(userEmail); setEditIncome(String(monthlyIncome || '')); setEditType(profile?.income_type || 'salary'); setShowEdit(true) }}>
           <Text style={st.editBtnText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={st.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
+      >
 
       {/* ─── Hero Profile Card ─── */}
       <View style={st.heroCard}>
@@ -297,7 +225,6 @@ export default function ProfileScreen() {
           <ArthFlowLogo size={120} />
         </View>
         <View style={st.heroContent}>
-          <ArthFlowLogo size={20} />
           <View style={st.heroUserRow}>
             <View style={st.heroAvatar}>
               <Text style={st.heroAvatarText}>{userName.charAt(0).toUpperCase()}</Text>
@@ -316,7 +243,7 @@ export default function ProfileScreen() {
           <View style={st.heroStatsGrid}>
             {[
               { emoji: '💰', value: fmtInr(monthlyIncome || income), label: 'Income', sensitive: true },
-              { emoji: '💎', value: fmtInr(netWorth), label: 'Net Worth', sensitive: true },
+              { emoji: '�', value: `${streak} mo`, label: 'Streak', sensitive: false },
               { emoji: '📈', value: `${savePct}%`, label: 'Saving', sensitive: false },
               { emoji: riskEmoji, value: riskLabel.slice(0, 6), label: 'Risk', sensitive: false },
             ].map(s => (
@@ -405,129 +332,6 @@ export default function ProfileScreen() {
         )
       })}
 
-      {/* ─── Net Worth & Asset Portfolio ─── */}
-      {(() => {
-        const nw = totalNetWorth(assets)
-        const segments = ASSET_CONFIG.filter(c => assets[c.key] > 0).sort((a, b) => assets[b.key] - assets[a.key])
-        return (
-          <>
-            <View style={[st.sectionHeader, { marginTop: 20 }]}>
-              <View style={st.sectionTitleRow}>
-                <Text style={{ fontSize: 15 }}>💎</Text>
-                <Text style={st.sectionTitle}>Net Worth</Text>
-              </View>
-              <View style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: BLUE_L }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>{showValues ? fmtInr(nw) : '••••'}</Text>
-              </View>
-            </View>
-
-            {/* Allocation bar */}
-            {nw > 0 && (
-              <View style={st.card}>
-                <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 }}>
-                  {segments.map(c => (
-                    <View key={c.key} style={{ flex: assets[c.key] / nw, backgroundColor: c.color, minWidth: 0 }} />
-                  ))}
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {segments.map(c => (
-                    <View key={c.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.color }} />
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold' }}>
-                        {c.emoji} {c.label} {Math.round((assets[c.key] / nw) * 100)}%
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Asset grid */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-              {ASSET_CONFIG.map(cfg => {
-                const val = assets[cfg.key]
-                return (
-                  <TouchableOpacity
-                    key={cfg.key}
-                    onPress={() => { setEditingAsset(cfg.key); setAssetInput(val > 0 ? String(val) : '') }}
-                    style={{ width: (SCREEN_W - 50) / 2, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: val > 0 ? cfg.color + '25' : BORDER }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <View style={{ width: 32, height: 32, borderRadius: 12, backgroundColor: cfg.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
-                      </View>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 }}>{cfg.label}</Text>
-                    </View>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold' }}>
-                      {val > 0 ? (showValues ? fmtInr(val) : '••••') : 'Tap to add'}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-          </>
-        )
-      })()}
-
-      {/* ─── Monthly Loop History ─── */}
-      <View style={[st.card, { marginTop: 20 }]}>
-        <View style={st.cardHeaderRow}>
-          <Text style={{ fontSize: 14 }}>🔄</Text>
-          <Text style={st.cardTitle}>Monthly Loop History</Text>
-        </View>
-        <View style={st.historyBars}>
-          {monthlyHistory.map(m => {
-            const maxTarget = Math.max(...monthlyHistory.map(h => h.target), 1)
-            const pct = Math.min((m.saved / maxTarget) * 100, 100)
-            const good = m.saved >= m.target * 0.9
-            return (
-              <View key={m.month} style={st.historyCol}>
-                <Text style={[st.historyValue, { color: good ? GREEN_H : ORANGE_H }]}>{fmtInr(m.saved)}</Text>
-                <View style={st.historyBarBg}>
-                  <View style={[st.historyBarFill, {
-                    height: `${Math.max(pct, 5)}%`,
-                    backgroundColor: m.current ? BLUE : good ? GREEN : ORANGE,
-                    opacity: m.current ? 1 : 0.75,
-                  }]} />
-                </View>
-                <Text style={[st.historyMonth, m.current && st.historyMonthCurrent]}>
-                  {m.month}{m.current ? ' ●' : ''}
-                </Text>
-              </View>
-            )
-          })}
-        </View>
-        <View style={st.historyInsight}>
-          <Text style={{ fontSize: 12 }}>⚡</Text>
-          <Text style={st.historyInsightText}>
-            Your next plan will auto-generate on the 1st based on this month's patterns.
-          </Text>
-        </View>
-      </View>
-
-      {/* ─── Monthly Summary ─── */}
-      <View style={st.card}>
-        <View style={st.cardHeaderRow}>
-          <Text style={{ fontSize: 14 }}>📊</Text>
-          <Text style={st.cardTitle}>This Month</Text>
-        </View>
-        <View style={st.summaryGrid}>
-          <View style={st.summaryItem}>
-            <Text style={st.summaryLabel}>Income</Text>
-            <Text style={[st.summaryValue, { color: TXT1 }]}>{showValues ? fmtInr(income) : '••••'}</Text>
-          </View>
-          <View style={st.summaryItem}>
-            <Text style={st.summaryLabel}>Expenses</Text>
-            <Text style={[st.summaryValue, { color: RED }]}>{showValues ? fmtInr(expenses) : '••••'}</Text>
-          </View>
-          <View style={st.summaryItem}>
-            <Text style={st.summaryLabel}>Savings</Text>
-            <Text style={[st.summaryValue, { color: GREEN }]}>{showValues ? fmtInr(Math.max(savings, 0)) : '••••'}</Text>
-          </View>
-        </View>
-      </View>
-
       {/* ─── Settings: Notifications ─── */}
       <View style={st.settingsGroup}>
         <Text style={st.settingsGroupTitle}>NOTIFICATIONS</Text>
@@ -609,6 +413,7 @@ export default function ProfileScreen() {
         <Text style={st.footerVersion}>ArthFlow v2.0.0</Text>
         <Text style={st.footerMade}>Made with ❤️ for better money habits</Text>
       </View>
+      </ScrollView>
 
       {/* ─── Fix Protection Modal ─── */}
       <Modal visible={!!fixingItem} animationType="slide" transparent>
@@ -861,57 +666,6 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* ─── Asset Edit Sheet ─── */}
-      <Modal visible={!!editingAsset} animationType="slide" transparent onRequestClose={() => setEditingAsset(null)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={st.modalOverlay}>
-          <View style={st.modalCard}>
-            <View style={st.sheetHandle} />
-            {(() => {
-              const cfg = ASSET_CONFIG.find(c => c.key === editingAsset)
-              if (!cfg) return null
-              return (
-                <>
-                  <View style={st.modalHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: cfg.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 20 }}>{cfg.emoji}</Text>
-                      </View>
-                      <Text style={st.modalTitle}>{cfg.label}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setEditingAsset(null)} style={st.modalCloseBtn}>
-                      <Text style={st.modalCloseText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 16 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
-                    <TextInput
-                      value={assetInput}
-                      onChangeText={setAssetInput}
-                      placeholder="0"
-                      placeholderTextColor={TXT3}
-                      keyboardType="numeric"
-                      style={{ flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}
-                      autoFocus
-                    />
-                  </View>
-                  <TouchableOpacity
-                    style={{ borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: BLUE }}
-                    onPress={() => {
-                      if (editingAsset) saveAssetValue(editingAsset, Number(assetInput) || 0)
-                      setEditingAsset(null)
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' }}>✓ Save {cfg.label}</Text>
-                  </TouchableOpacity>
-                </>
-              )
-            })()}
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
       {/* ─── Sign Out Confirmation Sheet ─── */}
       <Modal visible={showSignOut} animationType="slide" transparent>
         <View style={st.modalOverlay}>
@@ -932,7 +686,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   )
 }
 
@@ -953,16 +707,16 @@ function SettingsRow({ icon, label, desc }: { icon: string; label: string; desc:
 
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 48 },
   center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
 
   // App Bar
-  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingVertical: 4, paddingHorizontal: 20 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandText: { fontSize: 13, fontWeight: '700', color: '#1E293B', letterSpacing: 1.2, fontFamily: 'Manrope_700Bold' },
+  brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
   divider: { width: 1, height: 18, backgroundColor: BORDER, marginHorizontal: 4 },
-  barTitle: { fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  barSub: { fontSize: 10, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  barTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  barSub: { fontSize: 11, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
 
   // Hero Card
   heroCard: { borderRadius: 24, padding: 24, marginBottom: 20, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.38, shadowRadius: 60, elevation: 12 },
@@ -972,28 +726,28 @@ const st = StyleSheet.create({
   heroContent: { position: 'relative', zIndex: 1 },
   heroUserRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 20, marginBottom: 20 },
   heroAvatar: { width: 60, height: 60, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  heroAvatarText: { fontSize: 24, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
-  heroUserName: { fontSize: 22, fontWeight: '800', color: '#E0A820', letterSpacing: -0.4, fontFamily: 'Manrope_700Bold' },
-  heroUserSub: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  heroAvatarText: { fontSize: 26, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  heroUserName: { fontSize: 24, fontWeight: '800', color: '#E0A820', letterSpacing: -0.4, fontFamily: 'Manrope_700Bold' },
+  heroUserSub: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
   heroMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   heroMemberDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GREEN },
-  heroMemberText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_400Regular' },
+  heroMemberText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_400Regular' },
   heroStatsGrid: { flexDirection: 'row', gap: 8 },
   heroStatBox: { flex: 1, borderRadius: 14, padding: 8, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
-  heroStatValue: { fontSize: 12, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
-  heroStatLabel: { fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.3, fontFamily: 'Manrope_400Regular' },
+  heroStatValue: { fontSize: 13, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroStatLabel: { fontSize: 9, fontWeight: '600', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.3, fontFamily: 'Manrope_400Regular' },
 
   // Section header
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   gapsBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
-  gapsBadgeText: { fontSize: 12, fontWeight: '800', color: '#C2410C', fontFamily: 'Manrope_700Bold' },
+  gapsBadgeText: { fontSize: 13, fontWeight: '800', color: '#C2410C', fontFamily: 'Manrope_700Bold' },
 
   // Risk warning
   riskWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 20, padding: 16, marginBottom: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
-  riskWarningTitle: { fontSize: 14, fontWeight: '800', color: '#92400E', fontFamily: 'Manrope_700Bold' },
-  riskWarningDesc: { fontSize: 13, fontWeight: '500', color: '#B45309', marginTop: 4, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
+  riskWarningTitle: { fontSize: 15, fontWeight: '800', color: '#92400E', fontFamily: 'Manrope_700Bold' },
+  riskWarningDesc: { fontSize: 14, fontWeight: '500', color: '#B45309', marginTop: 4, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
 
   // Protection card
   protCard: { borderRadius: 20, overflow: 'hidden', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
@@ -1002,52 +756,52 @@ const st = StyleSheet.create({
   protRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   protIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   protNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 },
-  protName: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  protName: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   protBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   protBadgeDot: { width: 5, height: 5, borderRadius: 3 },
-  protBadgeLabel: { fontSize: 10, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  protDesc: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
-  protImpact: { fontSize: 12, fontWeight: '600', color: '#92400E', marginTop: 6, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
+  protBadgeLabel: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  protDesc: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  protImpact: { fontSize: 13, fontWeight: '600', color: '#92400E', marginTop: 6, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
   protFixBtn: { marginTop: 12, backgroundColor: BLUE, borderRadius: 16, paddingVertical: 12, alignItems: 'center', shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
-  protFixBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  protFixBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Card (generic)
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  cardTitle: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
 
   // History bars
   historyBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
   historyCol: { flex: 1, alignItems: 'center', gap: 6 },
-  historyValue: { fontSize: 11, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  historyValue: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
   historyBarBg: { width: '100%', height: 70, borderTopLeftRadius: 8, borderTopRightRadius: 8, backgroundColor: BG_SEC, overflow: 'hidden', position: 'relative' },
   historyBarFill: { position: 'absolute', bottom: 0, left: 0, right: 0, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
-  historyMonth: { fontSize: 11, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
+  historyMonth: { fontSize: 12, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
   historyMonthCurrent: { fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
   historyInsight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, borderRadius: 16, padding: 12, backgroundColor: BLUE_L, borderWidth: 1, borderColor: 'rgba(30,58,138,0.15)' },
-  historyInsightText: { fontSize: 12, fontWeight: '600', color: BLUE, lineHeight: 18, flex: 1, fontFamily: 'Manrope_400Regular' },
+  historyInsightText: { fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 19, flex: 1, fontFamily: 'Manrope_400Regular' },
 
   // Summary grid
   summaryGrid: { flexDirection: 'row', gap: 10 },
   summaryItem: { flex: 1, backgroundColor: BG_SEC, borderRadius: 12, padding: 12, alignItems: 'center' },
-  summaryLabel: { fontSize: 11, fontWeight: '600', color: TXT3, marginBottom: 4, fontFamily: 'Manrope_400Regular' },
-  summaryValue: { fontSize: 16, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  summaryLabel: { fontSize: 12, fontWeight: '600', color: TXT3, marginBottom: 4, fontFamily: 'Manrope_400Regular' },
+  summaryValue: { fontSize: 17, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
 
   // Settings
   settingsGroup: { marginBottom: 16 },
-  settingsGroupTitle: { fontSize: 11, fontWeight: '700', color: TXT3, letterSpacing: 1, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
+  settingsGroupTitle: { fontSize: 12, fontWeight: '700', color: TXT3, letterSpacing: 1, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
   settingsCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   settingsItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 16 },
   settingsIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  settingsLabel: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  settingsDesc: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  settingsLabel: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  settingsDesc: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
   settingsDivider: { height: 1, backgroundColor: BG_SEC, marginHorizontal: 20 },
   chevron: { fontSize: 22, color: TXT3, fontWeight: '300' },
 
   // Footer
   footer: { alignItems: 'center', paddingVertical: 20 },
-  footerVersion: { fontSize: 12, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  footerMade: { fontSize: 11, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  footerVersion: { fontSize: 13, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  footerMade: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
 
   // Fix modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.6)' },
@@ -1064,24 +818,24 @@ const st = StyleSheet.create({
 
   // Edit Profile button
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE_L, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  editBtnText: { fontSize: 11, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  editBtnText: { fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
 
   // Sheet handle
   sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 16 },
 
   // Edit Profile form
-  editSectionTitle: { fontSize: 12, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
-  editFieldLabel: { fontSize: 11, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
-  editInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, fontWeight: '600', color: TXT1, backgroundColor: BG_SEC, marginBottom: 12, fontFamily: 'Manrope_400Regular' },
+  editSectionTitle: { fontSize: 13, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
+  editFieldLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
+  editInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, fontWeight: '600', color: TXT1, backgroundColor: BG_SEC, marginBottom: 12, fontFamily: 'Manrope_400Regular' },
   editTypeBtn: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
   editTypeBtnActive: { backgroundColor: BLUE_L, borderColor: BLUE + '40' },
-  editTypeBtnText: { fontSize: 10, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
+  editTypeBtnText: { fontSize: 11, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
   editIncomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: BG_SEC, marginBottom: 12 },
   editIncomeInput: { flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   editSaveBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 16, backgroundColor: BLUE, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
 
   // Feedback
-  feedbackInput: { borderRadius: 16, padding: 14, fontSize: 13, color: TXT1, backgroundColor: BG_SEC, minHeight: 120, marginBottom: 8, fontFamily: 'Manrope_400Regular', textAlignVertical: 'top' },
+  feedbackInput: { borderRadius: 16, padding: 14, fontSize: 14, color: TXT1, backgroundColor: BG_SEC, minHeight: 120, marginBottom: 8, fontFamily: 'Manrope_400Regular', textAlignVertical: 'top' },
 
   // About
   aboutAppRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, padding: 14, marginBottom: 20, backgroundColor: BG_SEC },
