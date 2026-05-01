@@ -162,7 +162,13 @@ export default function App() {
           <TouchableOpacity
             key={tab.key}
             style={styles.tab}
-            onPress={() => setActiveTab(tab.key)}
+            onPress={() => {
+              if (tab.key === 'home' && activeTab !== 'home') {
+                // Coming back to Home — mark report stale so user sees refresh prompt
+                setRefreshKey(k => k + 1)
+              }
+              setActiveTab(tab.key)
+            }}
           >
             {activeTab === tab.key && <View style={styles.tabPill} />}
             <Feather name={tab.icon} size={20} color={activeTab === tab.key ? '#1E3A8A' : '#9CA3AF'} style={{ zIndex: 1, marginBottom: 3 }} />

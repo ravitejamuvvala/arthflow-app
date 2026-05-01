@@ -105,6 +105,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   // AI Report
   const [aiReport, setAiReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
+  const [reportStale, setReportStale] = useState(false)
 
   // Expense sheet
   const [showExpSheet, setShowExpSheet] = useState(false)
@@ -184,12 +185,16 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       const cached = await AsyncStorage.getItem('@arthflow_ai_report')
       if (cached) {
         const parsed = JSON.parse(cached)
-        // Use cache if less than 6 hours old
-        if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+        const cachedDate = new Date(parsed.ts)
+        const now = new Date()
+        const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
+        // Use cache if same month and less than 6 hours old
+        if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
           setAiReport(parsed.report)
           setReportLoading(false)
           return
         }
+        // If different month, auto-expire (month-end refresh)
       }
     } catch {}
     try {
@@ -228,12 +233,24 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   }
 
   useEffect(() => { fetchData() }, [fetchData])
-  useEffect(() => { if (refreshTrigger && refreshTrigger > 0) fetchData() }, [refreshTrigger])
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      setReportStale(true)
+      fetchData()
+    }
+  }, [refreshTrigger])
   const onRefresh = async () => {
     setRefreshing(true)
+    setReportStale(false)
     await AsyncStorage.removeItem('@arthflow_ai_report')
     await fetchData()
     setRefreshing(false)
+  }
+
+  const forceRefreshReport = async () => {
+    setReportStale(false)
+    await AsyncStorage.removeItem('@arthflow_ai_report')
+    await fetchData()
   }
 
   const firstName = userName.split(' ')[0]
@@ -442,6 +459,14 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               <Text style={{ fontSize: 16 }}>🤖</Text>
               <Text style={s.cardTitle}>AI Financial Report</Text>
             </View>
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); forceRefreshReport() }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.6}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ fontSize: 16 }}>{reportLoading ? '⏳' : '🔄'}</Text>
+            </TouchableOpacity>
             {aiReport && (
               <View style={[s.reportScoreBadge, {
                 backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : aiReport.score >= 40 ? ORANGE : RED) + '18'
@@ -452,6 +477,18 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               </View>
             )}
           </View>
+
+          {reportStale && !reportLoading && aiReport && (
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); forceRefreshReport() }}
+              activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 }}
+            >
+              <Text style={{ fontSize: 12 }}>💡</Text>
+              <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: '#92400E', flex: 1 }}>Your data has changed — tap to refresh report</Text>
+              <Text style={{ fontSize: 11, color: '#92400E' }}>🔄</Text>
+            </TouchableOpacity>
+          )}
 
           {reportLoading && !aiReport ? (
             <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>

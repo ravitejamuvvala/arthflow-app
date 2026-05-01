@@ -391,9 +391,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           <ArthFlowLogo size={28} />
           <Text style={s.brandText}>ARTHFLOW</Text>
         </View>
-        <View style={s.badge}>
+        <TouchableOpacity style={s.badge} activeOpacity={0.7} onPress={() => mainScroll.current?.scrollToEnd({ animated: true })}>
           <Text style={s.badgeTxt}>✨ AI Coach</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
