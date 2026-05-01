@@ -469,7 +469,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
   // ─── Step 5: AI Summary ─────────────────────────────────────────
   const renderSummary = () => {
-    const netWorth = savings > 0 ? savings * 3 : 0
+    // Engine-driven insight
+    const planInsight = savePct >= 20
+      ? `You're saving ${savePct}% — above the 20% benchmark. Start a SIP to grow your surplus.`
+      : savePct >= 10
+      ? `Saving ${savePct}%. Trim lifestyle by ${fmtInr(Math.round(lifestyle * 0.15))} to reach 20%.`
+      : savings > 0
+      ? `Saving only ${savePct}%. Cut ₹${Math.round((income * 0.2 - savings)).toLocaleString('en-IN')} from spending to build wealth.`
+      : `You're spending more than you earn. Reduce expenses by ${fmtInr(Math.abs(savings))} to break even.`
 
     return (
       <View style={s.stepContainer}>
@@ -484,13 +491,13 @@ export default function OnboardingScreen({ onComplete }: Props) {
             <View style={{ position: 'relative', zIndex: 1, alignItems: 'center' }}>
               <ArthFlowLogo size={28} />
               <Text style={s.summaryGreeting}>Hello, {name || 'Friend'} 👋</Text>
-              <Text style={s.summaryHeadline}>Your wealth profile is ready</Text>
+              <Text style={s.summaryHeadline}>Here's your plan</Text>
 
               <View style={s.summaryStats}>
                 {[
-                  { label: 'Net Worth', value: fmtInr(netWorth) },
-                  { label: 'Monthly surplus', value: fmtInr(Math.max(0, savings)) },
-                  { label: 'Goals', value: `${selectedGoals.length} set` },
+                  { label: 'Income', value: fmtInr(income) },
+                  { label: 'Expenses', value: fmtInr(totalExpenses) },
+                  { label: 'Savings', value: fmtInr(Math.max(0, savings)) },
                 ].map(({ label, value }) => (
                   <View key={label} style={{ alignItems: 'center' }}>
                     <Text style={s.summaryStatVal}>{value}</Text>

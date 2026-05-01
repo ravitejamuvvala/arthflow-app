@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
     ActivityIndicator,
@@ -20,7 +19,6 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 
-// ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
 const BLUE_L  = '#DBEAFE'
 const GREEN   = '#22C55E'
@@ -31,9 +29,6 @@ const ORANGE_H= '#D97706'
 const ORANGE_L= '#FEF3C7'
 const RED     = '#EF4444'
 const TEAL    = '#14B8A6'
-const TEAL_L  = '#CCFBF1'
-const INDIGO  = '#6366F1'
-const INDIGO_L= '#E0E7FF'
 const TXT1    = '#111827'
 const TXT2    = '#6B7280'
 const TXT3    = '#9CA3AF'
@@ -41,85 +36,29 @@ const BORDER  = '#E5E7EB'
 const BG_SEC  = '#F1F5F9'
 
 const { width: SCREEN_W } = Dimensions.get('window')
-const STORAGE_KEY = '@arthflow_assets'
 
-// ─── Asset Config ───────────────────────────────────────────────────────
-interface AssetPortfolio {
-  liquidCash: number; mutualFunds: number; stocks: number; epf: number
-  ppf: number; gold: number; realEstate: number; other: number
-}
-const defaultAssets: AssetPortfolio = {
-  liquidCash: 0, mutualFunds: 0, stocks: 0, epf: 0,
-  ppf: 0, gold: 0, realEstate: 0, other: 0,
-}
+type ProtectionStatus = 'missing' | 'partial' | 'ok'
+interface ProtectionItem { id: string; label: string; status: ProtectionStatus; icon: string; desc: string; impact: string }
 
-interface AssetConfig {
-  key: keyof AssetPortfolio; label: string; subLabel: string
-  emoji: string; color: string; bg: string; description: string
-}
-const ASSET_CONFIG: AssetConfig[] = [
-  { key: 'liquidCash',  label: 'Cash & Savings',   subLabel: 'Bank + FD < 1yr',        emoji: '💵', color: GREEN,  bg: GREEN_L,  description: 'Savings account, current account, and fixed deposits under 1 year.' },
-  { key: 'mutualFunds', label: 'Mutual Funds',     subLabel: 'SIP + Lump sum',         emoji: '📈', color: BLUE,   bg: BLUE_L,   description: 'Total current value of all mutual fund investments.' },
-  { key: 'stocks',      label: 'Stocks',           subLabel: 'Direct equity portfolio', emoji: '📊', color: INDIGO, bg: INDIGO_L, description: 'Current market value of your direct stock portfolio.' },
-  { key: 'epf',         label: 'EPF / PF',         subLabel: 'Employee Provident Fund', emoji: '🏦', color: TEAL,   bg: TEAL_L,   description: 'Your accumulated EPF balance.' },
-  { key: 'ppf',         label: 'PPF',              subLabel: 'Public Provident Fund',   emoji: '🔒', color: '#8B5CF6', bg: '#EDE9FE', description: 'Public Provident Fund balance. Tax-free under 80C.' },
-  { key: 'gold',        label: 'Gold',             subLabel: 'Physical + SGB + ETF',    emoji: '🥇', color: ORANGE, bg: ORANGE_L, description: 'Total value of gold holdings.' },
-  { key: 'realEstate',  label: 'Real Estate',      subLabel: 'Investment properties',   emoji: '🏠', color: RED,    bg: '#FEE2E2', description: 'Current market value of investment properties.' },
-  { key: 'other',       label: 'Other Assets',     subLabel: 'NPS · Bonds · Crypto',    emoji: '🔧', color: TXT2,   bg: BG_SEC,   description: 'NPS, bonds, crypto, and other investments.' },
+const PROTECTION_ITEMS: ProtectionItem[] = [
+  { id: 'health',    label: 'Health Insurance',    status: 'missing',  icon: '🏥', desc: 'No policy found.',           impact: 'A medical emergency can wipe out your savings in weeks.' },
+  { id: 'emergency', label: 'Emergency Fund',      status: 'partial',  icon: '🛡️', desc: '1 month covered.',           impact: 'You need 6 months of expenses. You\'re at ~1 month covered.' },
+  { id: 'life',      label: 'Term Life Insurance', status: 'missing',  icon: '❤️', desc: 'No coverage.',              impact: 'Without coverage, your family loses financial protection if something happens.' },
+  { id: 'income',    label: 'Income Protection',   status: 'ok',       icon: '💼', desc: 'PF/ESI active via employer.',impact: 'You\'re covered through your employer.' },
 ]
 
+const STATUS_CFG: Record<ProtectionStatus, { bg: string; dot: string; label: string; labelColor: string }> = {
+  ok:      { bg: GREEN_L,    dot: GREEN,    label: 'Protected',   labelColor: GREEN_H },
+  partial: { bg: ORANGE_L,   dot: ORANGE,   label: 'Partial',     labelColor: ORANGE_H },
+  missing: { bg: '#FFF7ED',  dot: '#F97316', label: 'Not covered', labelColor: '#C2410C' },
+}
+
 function fmtInr(val: number) {
-  if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`
   if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`
   if (val >= 1000)   return `₹${(val / 1000).toFixed(1)}K`
   return `₹${Math.round(val)}`
 }
 
-function totalNetWorth(a: AssetPortfolio): number {
-  return Object.values(a).reduce((s, v) => s + v, 0)
-}
-
-// ─── Evaluate Protection (dynamic) ──────────────────────────────────────
-function evaluateProtection(assets: AssetPortfolio, monthlyExpenses: number) {
-  const liquid = assets.liquidCash ?? 0
-  const needed6 = monthlyExpenses * 6
-  const monthsCovered = needed6 > 0 ? Math.floor(liquid / (needed6 / 6)) : 0
-  const emergencyStatus: 'ok' | 'partial' | 'missing' = monthsCovered >= 6 ? 'ok' : monthsCovered >= 1 ? 'partial' : 'missing'
-  const emergencyDesc = monthsCovered >= 6
-    ? `${monthsCovered} months covered ✅`
-    : monthsCovered >= 1
-    ? `~${monthsCovered} month${monthsCovered > 1 ? 's' : ''} covered — need 6 months`
-    : 'No emergency fund yet'
-
-  return [
-    { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: emergencyStatus, desc: emergencyDesc },
-    { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Not tracked yet' },
-    { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Not tracked yet' },
-  ]
-}
-
-// ─── Wealth Insights (dynamic) ──────────────────────────────────────────
-function getWealthInsights(assets: AssetPortfolio, nw: number) {
-  if (nw === 0) return []
-  const insights: string[] = []
-  const pcts = Object.entries(assets).map(([k, v]) => ({ key: k, pct: nw > 0 ? Math.round((v / nw) * 100) : 0, val: v }))
-  const top = pcts.sort((a, b) => b.pct - a.pct)[0]
-  if (top && top.pct > 50) {
-    const cfg = ASSET_CONFIG.find(c => c.key === top.key)
-    insights.push(`You're ${top.pct}% in ${cfg?.label || top.key} — consider diversifying`)
-  }
-  if ((assets.liquidCash / nw) < 0.05 && nw > 100000) {
-    insights.push('Your cash is quite low — keep 3–6 months expenses liquid')
-  }
-  if (assets.gold > 0 && (assets.gold / nw) > 0.15) {
-    insights.push('Gold is over 15% of portfolio — ideal range is 5–10%')
-  }
-  return insights
-}
-
-// ═════════════════════════════════════════════════════════════════════════
-// COMPONENT
-// ═════════════════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
   const [userName, setUserName]     = useState('')
   const [userEmail, setUserEmail]   = useState('')
@@ -127,7 +66,6 @@ export default function ProfileScreen() {
   const [goals, setGoals]           = useState<Goal[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
-  const [assets, setAssets]         = useState<AssetPortfolio>(defaultAssets)
   const [loading, setLoading]       = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [notifications, setNotifications] = useState(true)
@@ -148,8 +86,6 @@ export default function ProfileScreen() {
   const [editType, setEditType]       = useState<string>('salary')
   const [showSignOut, setShowSignOut] = useState(false)
   const [showValues, setShowValues] = useState(false)
-  const [activeAssetSheet, setActiveAssetSheet] = useState<keyof AssetPortfolio | null>(null)
-  const [assetInputValue, setAssetInputValue] = useState('')
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -162,6 +98,7 @@ export default function ProfileScreen() {
     startOfMonth.setDate(1)
     startOfMonth.setHours(0, 0, 0, 0)
 
+    // Fetch last 4 months of transactions for history
     const fourMonthsAgo = new Date()
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 3)
     fourMonthsAgo.setDate(1)
@@ -178,28 +115,21 @@ export default function ProfileScreen() {
     setAllTransactions(allTxResult.data ?? [])
     setGoals(goalsResult.data ?? [])
     setProfile(profileResult.data ?? null)
-
-    // Load assets from AsyncStorage
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY)
-      if (raw) setAssets(JSON.parse(raw))
-    } catch {}
-
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
-  const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false) }
 
-  const saveAsset = (key: keyof AssetPortfolio, val: number) => {
-    setAssets(prev => {
-      const next = { ...prev, [key]: val }
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await fetchData()
+    setRefreshing(false)
   }
 
-  const handleSignOut = () => setShowSignOut(true)
+  const handleSignOut = () => {
+    setShowSignOut(true)
+  }
+
   const confirmSignOut = async () => {
     setSigningOut(true)
     await supabase.auth.signOut()
@@ -214,27 +144,24 @@ export default function ProfileScreen() {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           await supabase.from('profiles').update({ is_onboarded: false }).eq('id', user.id)
+          // Force reload - the App.js onboarding check will kick in
           await supabase.auth.refreshSession()
+          // Trigger auth state change to re-check onboarding
           const { data: { session } } = await supabase.auth.getSession()
-          if (session) await supabase.auth.signOut()
+          if (session) {
+            await supabase.auth.signOut()
+          }
         }
       }},
     ])
   }
 
-  if (loading) {
-    return <View style={st.center}><ActivityIndicator color={BLUE} size="large" /></View>
-  }
-
   const income     = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const expenses   = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  const savings    = income - expenses
   const monthlyIncome = profile?.monthly_income ?? 0
-  const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
-  const age = profile?.age ?? 28
-  const riskLabel = age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
-  const riskEmoji = age < 30 ? '🔥' : age < 40 ? '⚡' : age < 50 ? '🛡️' : '🌿'
 
-  // Streak
+  // Streak: count consecutive months with positive savings
   const getStreak = () => {
     let streak = 0
     const now = new Date()
@@ -251,24 +178,25 @@ export default function ProfileScreen() {
     }
     return streak
   }
+
+  const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
+  const age = profile?.age ?? 28
+  const riskLabel = age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
+  const riskEmoji = age < 30 ? '🔥' : age < 40 ? '⚡' : age < 50 ? '🛡️' : '🌿'
+
+  if (loading) {
+    return (
+      <View style={st.center}>
+        <ActivityIndicator color={BLUE} size="large" />
+      </View>
+    )
+  }
+
   const streak = getStreak()
-
-  // Wealth
-  const nw = totalNetWorth(assets)
-  const monthlyExp = expenses || (profile?.expenses_essentials ?? 0) + (profile?.expenses_lifestyle ?? 0) + (profile?.expenses_emis ?? 0)
-  const protectionItems = evaluateProtection(assets, monthlyExp)
-  const wealthInsights = getWealthInsights(assets, nw)
-  const activeCfg = ASSET_CONFIG.find(c => c.key === activeAssetSheet)
-
-  // Allocation segments
-  const allocSegments = ASSET_CONFIG
-    .map(cfg => ({ label: cfg.label, value: assets[cfg.key], color: cfg.color, emoji: cfg.emoji }))
-    .filter(s => s.value > 0)
-    .sort((a, b) => b.value - a.value)
 
   return (
     <View style={st.container}>
-      {/* App Bar */}
+      {/* App Bar (fixed) */}
       <View style={st.appBar}>
         <View style={st.brandRow}>
           <ArthFlowLogo size={28} />
@@ -312,7 +240,7 @@ export default function ProfileScreen() {
           <View style={st.heroStatsGrid}>
             {[
               { emoji: '💰', value: fmtInr(monthlyIncome || income), label: 'Income', sensitive: true },
-              { emoji: '🔥', value: `${streak} mo`, label: 'Streak', sensitive: false },
+              { emoji: '�', value: `${streak} mo`, label: 'Streak', sensitive: false },
               { emoji: '📈', value: `${savePct}%`, label: 'Saving', sensitive: false },
               { emoji: riskEmoji, value: riskLabel.slice(0, 6), label: 'Risk', sensitive: false },
             ].map(s => (
@@ -332,6 +260,7 @@ export default function ProfileScreen() {
             <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_700Bold' }}>{showValues ? 'Hide' : 'Show'}</Text>
           </TouchableOpacity>
 
+          {/* DOB / Phone row */}
           {(profile?.dob || profile?.phone || age) && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
               {age > 0 && <Text style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular' }}>🎂 Age {age}</Text>}
@@ -339,98 +268,6 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
-      </View>
-
-      {/* ─── Net Worth & Wealth ─── */}
-      <View style={st.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <Text style={st.cardTitle}>Net Worth</Text>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: '#E0A820', fontFamily: 'Manrope_700Bold' }}>
-            {showValues ? fmtInr(nw) : '••••'}
-          </Text>
-        </View>
-
-        {/* Allocation bar */}
-        {nw > 0 && (
-          <>
-            <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 }}>
-              {allocSegments.map(seg => (
-                <View key={seg.label} style={{ flex: seg.value / nw, backgroundColor: seg.color, minWidth: 0 }} />
-              ))}
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-              {allocSegments.map(seg => {
-                const pct = Math.round((seg.value / nw) * 100)
-                return (
-                  <View key={seg.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: seg.color }} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_400Regular' }}>{seg.emoji} {seg.label}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{pct}%</Text>
-                  </View>
-                )
-              })}
-            </View>
-          </>
-        )}
-
-        {/* Asset grid */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-          {ASSET_CONFIG.map(cfg => {
-            const val = assets[cfg.key]
-            return (
-              <TouchableOpacity
-                key={cfg.key}
-                onPress={() => { setActiveAssetSheet(cfg.key); setAssetInputValue(val > 0 ? String(val) : '') }}
-                style={[st.assetChip, { borderColor: val > 0 ? cfg.color + '30' : BORDER }]}
-                activeOpacity={0.7}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold', marginTop: 4 }}>
-                  {showValues ? (val > 0 ? fmtInr(val) : '₹0') : '••••'}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </View>
-
-        {/* Wealth insights */}
-        {wealthInsights.length > 0 && (
-          <View style={{ marginTop: 12, gap: 6 }}>
-            {wealthInsights.map((ins, i) => (
-              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, padding: 10, backgroundColor: ORANGE_L }}>
-                <Text style={{ fontSize: 12 }}>⚡</Text>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: ORANGE_H, flex: 1, fontFamily: 'Manrope_400Regular' }}>{ins}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* ─── Protection Status ─── */}
-      <View style={st.card}>
-        <Text style={[st.cardTitle, { marginBottom: 12 }]}>🛡️ Protection Status</Text>
-        {protectionItems.map(item => {
-          const isOk = item.status === 'ok'
-          const isPartial = item.status === 'partial'
-          const statusColor = isOk ? GREEN : isPartial ? ORANGE : RED
-          const statusLabel = isOk ? 'Covered' : isPartial ? 'Partial' : 'Missing'
-          const bgColor = isOk ? GREEN_L : isPartial ? ORANGE_L : '#FEE2E2'
-          return (
-            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: item.id === 'emergency' ? 0 : 1, borderTopColor: BG_SEC }}>
-              <Text style={{ fontSize: 18 }}>{item.icon}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{item.desc}</Text>
-              </View>
-              <View style={{ borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: bgColor }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: statusColor, fontFamily: 'Manrope_700Bold' }}>{statusLabel}</Text>
-              </View>
-            </View>
-          )
-        })}
       </View>
 
       {/* ─── Settings: Notifications ─── */}
@@ -509,61 +346,12 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Footer */}
       <View style={st.footer}>
         <Text style={st.footerVersion}>ArthFlow v2.0.0</Text>
         <Text style={st.footerMade}>Made with ❤️ for better money habits</Text>
       </View>
       </ScrollView>
-
-      {/* ─── Asset Edit Sheet ─── */}
-      <Modal visible={!!activeAssetSheet} animationType="slide" transparent onRequestClose={() => setActiveAssetSheet(null)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.65)' }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setActiveAssetSheet(null)} />
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 16 }} />
-            {activeCfg && (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <View style={{ width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: activeCfg.bg }}>
-                    <Text style={{ fontSize: 22 }}>{activeCfg.emoji}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{activeCfg.label}</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' }}>{activeCfg.subLabel}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setActiveAssetSheet(null)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 14, color: TXT2 }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={{ fontSize: 14, color: TXT2, lineHeight: 22, marginBottom: 16, marginTop: 8, paddingLeft: 4, fontFamily: 'Manrope_400Regular' }}>{activeCfg.description}</Text>
-                <View style={{ borderRadius: 20, padding: 20, alignItems: 'center', backgroundColor: '#0B1B4A', marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, fontFamily: 'Manrope_700Bold' }}>Current value of {activeCfg.label}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 32, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginRight: 4, fontFamily: 'Manrope_700Bold' }}>₹</Text>
-                    <TextInput
-                      value={assetInputValue}
-                      onChangeText={setAssetInputValue}
-                      placeholder="0"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      keyboardType="numeric"
-                      style={{ fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120, fontFamily: 'Manrope_700Bold' }}
-                    />
-                  </View>
-                </View>
-                <TouchableOpacity
-                  onPress={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(assetInputValue) || 0); setActiveAssetSheet(null) } }}
-                  style={{ borderRadius: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE }}
-                >
-                  <Text style={{ fontSize: 14, color: '#fff' }}>✓</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' }}>Save {activeCfg.label}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
       {/* ─── Edit Profile Sheet ─── */}
       <Modal visible={showEdit} animationType="slide" transparent>
@@ -582,6 +370,7 @@ export default function ProfileScreen() {
             </View>
 
             <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              {/* Identity */}
               <Text style={st.editSectionTitle}>Identity</Text>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
                 <View style={{ flex: 1 }}>
@@ -596,13 +385,34 @@ export default function ProfileScreen() {
 
               <Text style={st.editFieldLabel}>DATE OF BIRTH</Text>
               <TextInput style={st.editInput} value={editDob} onChangeText={setEditDob} placeholder="YYYY-MM-DD" placeholderTextColor={TXT3} />
+              {editDob.length >= 10 && (() => {
+                const d = new Date(editDob)
+                if (isNaN(d.getTime())) return null
+                const today = new Date()
+                let derivedAge = today.getFullYear() - d.getFullYear()
+                if (today.getMonth() < d.getMonth() || (today.getMonth() === d.getMonth() && today.getDate() < d.getDate())) derivedAge--
+                if (derivedAge <= 0 || derivedAge >= 120) return null
+                const rp = derivedAge <= 30 ? 'Aggressive' : derivedAge <= 40 ? 'Balanced' : derivedAge <= 55 ? 'Moderate' : 'Conservative'
+                const rpEmoji = derivedAge <= 30 ? '🔥' : derivedAge <= 40 ? '⚡' : derivedAge <= 55 ? '🛡️' : '🌿'
+                const rpColor = derivedAge <= 30 ? RED : derivedAge <= 40 ? ORANGE : derivedAge <= 55 ? BLUE : GREEN
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -6, marginBottom: 8, paddingHorizontal: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: rpColor + '15' }}>
+                      <Text style={{ fontSize: 12 }}>{rpEmoji}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: rpColor, fontFamily: 'Manrope_700Bold' }}>Age {derivedAge} · {rp} investor</Text>
+                    </View>
+                  </View>
+                )
+              })()}
 
+              {/* Contact */}
               <Text style={st.editSectionTitle}>Contact <Text style={{ fontSize: 10, fontWeight: '500', color: TXT3 }}>(optional)</Text></Text>
               <Text style={st.editFieldLabel}>PHONE NUMBER</Text>
               <TextInput style={st.editInput} value={editPhone} onChangeText={setEditPhone} placeholder="+91 9876543210" placeholderTextColor={TXT3} keyboardType="phone-pad" />
               <Text style={st.editFieldLabel}>EMAIL ADDRESS</Text>
               <TextInput style={st.editInput} value={editEmail} onChangeText={setEditEmail} placeholder="arjun@email.com" placeholderTextColor={TXT3} keyboardType="email-address" autoCapitalize="none" />
 
+              {/* Income */}
               <Text style={st.editSectionTitle}>Income</Text>
               <Text style={st.editFieldLabel}>EMPLOYMENT TYPE</Text>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -758,7 +568,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* ─── Sign Out Confirmation ─── */}
+      {/* ─── Sign Out Confirmation Sheet ─── */}
       <Modal visible={showSignOut} animationType="slide" transparent>
         <View style={st.modalOverlay}>
           <View style={st.modalCard}>
@@ -797,16 +607,20 @@ function SettingsRow({ icon, label, desc }: { icon: string; label: string; desc:
   )
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 48 },
   center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
 
+  // App Bar
   appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingVertical: 4, paddingHorizontal: 20 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
+  divider: { width: 1, height: 18, backgroundColor: BORDER, marginHorizontal: 4 },
+  barTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  barSub: { fontSize: 11, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
 
+  // Hero Card
   heroCard: { borderRadius: 24, padding: 24, marginBottom: 20, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.38, shadowRadius: 60, elevation: 12 },
   heroBlob1: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(30,58,138,0.55)' },
   heroBlob2: { position: 'absolute', bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(200,134,10,0.12)' },
@@ -825,14 +639,60 @@ const st = StyleSheet.create({
   heroStatValue: { fontSize: 13, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
   heroStatLabel: { fontSize: 9, fontWeight: '600', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.3, fontFamily: 'Manrope_400Regular' },
 
-  card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  // Section header
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  gapsBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
+  gapsBadgeText: { fontSize: 13, fontWeight: '800', color: '#C2410C', fontFamily: 'Manrope_700Bold' },
 
-  assetChip: { width: (SCREEN_W - 40 - 10 - 32) / 2, borderRadius: 16, padding: 12, backgroundColor: '#fff', borderWidth: 1 },
+  // Risk warning
+  riskWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 20, padding: 16, marginBottom: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
+  riskWarningTitle: { fontSize: 15, fontWeight: '800', color: '#92400E', fontFamily: 'Manrope_700Bold' },
+  riskWarningDesc: { fontSize: 14, fontWeight: '500', color: '#B45309', marginTop: 4, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
 
+  // Protection card
+  protCard: { borderRadius: 20, overflow: 'hidden', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
+  protStripe: { height: 3 },
+  protBody: { padding: 16 },
+  protRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  protIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  protNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 },
+  protName: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  protBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  protBadgeDot: { width: 5, height: 5, borderRadius: 3 },
+  protBadgeLabel: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  protDesc: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  protImpact: { fontSize: 13, fontWeight: '600', color: '#92400E', marginTop: 6, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
+  protFixBtn: { marginTop: 12, backgroundColor: BLUE, borderRadius: 16, paddingVertical: 12, alignItems: 'center', shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
+  protFixBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+
+  // Card (generic)
+  card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+
+  // History bars
+  historyBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  historyCol: { flex: 1, alignItems: 'center', gap: 6 },
+  historyValue: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  historyBarBg: { width: '100%', height: 70, borderTopLeftRadius: 8, borderTopRightRadius: 8, backgroundColor: BG_SEC, overflow: 'hidden', position: 'relative' },
+  historyBarFill: { position: 'absolute', bottom: 0, left: 0, right: 0, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
+  historyMonth: { fontSize: 12, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
+  historyMonthCurrent: { fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  historyInsight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, borderRadius: 16, padding: 12, backgroundColor: BLUE_L, borderWidth: 1, borderColor: 'rgba(30,58,138,0.15)' },
+  historyInsightText: { fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 19, flex: 1, fontFamily: 'Manrope_400Regular' },
+
+  // Summary grid
+  summaryGrid: { flexDirection: 'row', gap: 10 },
+  summaryItem: { flex: 1, backgroundColor: BG_SEC, borderRadius: 12, padding: 12, alignItems: 'center' },
+  summaryLabel: { fontSize: 12, fontWeight: '600', color: TXT3, marginBottom: 4, fontFamily: 'Manrope_400Regular' },
+  summaryValue: { fontSize: 17, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+
+  // Settings
   settingsGroup: { marginBottom: 16 },
   settingsGroupTitle: { fontSize: 12, fontWeight: '700', color: TXT3, letterSpacing: 1, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
-  settingsCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: BORDER },
+  settingsCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   settingsItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 16 },
   settingsIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   settingsLabel: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
@@ -840,20 +700,32 @@ const st = StyleSheet.create({
   settingsDivider: { height: 1, backgroundColor: BG_SEC, marginHorizontal: 20 },
   chevron: { fontSize: 22, color: TXT3, fontWeight: '300' },
 
+  // Footer
   footer: { alignItems: 'center', paddingVertical: 20 },
   footerVersion: { fontSize: 13, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_700Bold' },
   footerMade: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
 
+  // Fix modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.6)' },
   modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   modalCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
   modalCloseText: { fontSize: 15, color: TXT2 },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 16 },
+  modalIconBox: { borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 20, backgroundColor: BLUE_L, borderWidth: 1, borderColor: 'rgba(30,58,138,0.2)' },
+  modalImpact: { fontSize: 14, fontWeight: '600', color: BLUE, marginTop: 8, lineHeight: 22, textAlign: 'center', fontFamily: 'Manrope_400Regular' },
+  modalAction: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginBottom: 10, borderWidth: 1.5, borderColor: BORDER },
+  modalActionPrimary: { backgroundColor: BLUE, borderColor: BLUE, shadowColor: BLUE, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },
+  modalActionText: { fontSize: 14, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
 
+  // Edit Profile button
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE_L, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
   editBtnText: { fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+
+  // Sheet handle
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 16 },
+
+  // Edit Profile form
   editSectionTitle: { fontSize: 13, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
   editFieldLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
   editInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, fontWeight: '600', color: TXT1, backgroundColor: BG_SEC, marginBottom: 12, fontFamily: 'Manrope_400Regular' },
@@ -862,9 +734,12 @@ const st = StyleSheet.create({
   editTypeBtnText: { fontSize: 11, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
   editIncomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: BG_SEC, marginBottom: 12 },
   editIncomeInput: { flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  editSaveBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 16, backgroundColor: BLUE },
+  editSaveBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 16, backgroundColor: BLUE, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
 
+  // Feedback
   feedbackInput: { borderRadius: 16, padding: 14, fontSize: 14, color: TXT1, backgroundColor: BG_SEC, minHeight: 120, marginBottom: 8, fontFamily: 'Manrope_400Regular', textAlignVertical: 'top' },
+
+  // About
   aboutAppRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, padding: 14, marginBottom: 20, backgroundColor: BG_SEC },
   aboutAppIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B1B4A' },
 })

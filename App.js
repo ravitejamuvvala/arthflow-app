@@ -15,7 +15,6 @@ import LoginScreen from './src/screens/LoginScreen'
 import OnboardingScreen from './src/screens/OnboardingScreen'
 import ProfileScreen from './src/screens/ProfileScreen'
 import ThisMonthScreen from './src/screens/ThisMonthScreen'
-import WealthScreen from './src/screens/WealthScreen'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -124,7 +123,6 @@ export default function App() {
       <View style={[styles.screen, { paddingTop: TOP_INSET }]}>
         {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
         {activeTab === 'plan' && <GoalsScreen />}
-        {activeTab === 'wealth' && <WealthScreen />}
         {activeTab === 'coach' && <CoachScreen />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
@@ -133,7 +131,6 @@ export default function App() {
         {[
           { key: 'home', icon: 'home', label: 'Home' },
           { key: 'plan', icon: 'target', label: 'Plan' },
-          { key: 'wealth', icon: 'briefcase', label: 'Wealth' },
           { key: 'coach', icon: 'zap', label: 'Coach' },
           { key: 'profile', icon: 'user', label: 'Me' },
         ].map(tab => (
