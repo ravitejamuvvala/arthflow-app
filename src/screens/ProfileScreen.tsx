@@ -1,20 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -185,6 +185,10 @@ export default function ProfileScreen() {
   const handleSignOut = () => setShowSignOut(true)
   const confirmSignOut = async () => {
     setSigningOut(true)
+    // Clear all local cached data before signing out
+    const keys = await AsyncStorage.getAllKeys()
+    const arthKeys = keys.filter(k => k.startsWith('@arthflow_'))
+    if (arthKeys.length) await AsyncStorage.multiRemove(arthKeys)
     await supabase.auth.signOut()
     setSigningOut(false)
     setShowSignOut(false)
@@ -278,7 +282,11 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={st.heroUserName}>{userName}</Text>
               <Text style={st.heroUserSub}>
-                {profile?.income_type === 'business' ? '🏢 Business' : profile?.income_type === 'freelance' ? '👤 Freelance' : '💼 Salaried'}{age > 0 ? ` · Age ${age}` : ''}
+                {(() => {
+                  const t = profile?.income_type
+                  const map: Record<string, string> = { salary: '💼 Salaried', business: '🏢 Business', freelance: '👤 Freelance', homemaker: '🏠 Homemaker', student: '🎓 Student', retired: '🏖️ Retired' }
+                  return map[t || ''] || (t ? `✏️ ${t.charAt(0).toUpperCase() + t.slice(1)}` : '💼 Salaried')
+                })()}{age > 0 ? ` · Age ${age}` : ''}
               </Text>
               <View style={st.heroMemberRow}>
                 <View style={st.heroMemberDot} />
@@ -540,11 +548,19 @@ export default function ProfileScreen() {
 
               <Text style={st.editSectionTitle}>Income</Text>
               <Text style={st.editFieldLabel}>EMPLOYMENT TYPE</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                {(['salary', 'business', 'freelance'] as const).map(t => (
-                  <TouchableOpacity key={t} style={[st.editTypeBtn, editType === t && st.editTypeBtnActive]} onPress={() => setEditType(t)} activeOpacity={0.7}>
-                    <Text style={{ fontSize: 16 }}>{t === 'salary' ? '💼' : t === 'business' ? '🏢' : '🎯'}</Text>
-                    <Text style={[st.editTypeBtnText, editType === t && { color: BLUE }]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {[
+                  { key: 'salary',    emoji: '💼', label: 'Salaried' },
+                  { key: 'business',  emoji: '🏢', label: 'Business' },
+                  { key: 'freelance', emoji: '👤', label: 'Freelance' },
+                  { key: 'homemaker', emoji: '🏠', label: 'Homemaker' },
+                  { key: 'student',   emoji: '🎓', label: 'Student' },
+                  { key: 'retired',   emoji: '🏖️', label: 'Retired' },
+                  { key: 'other',     emoji: '✏️', label: 'Other' },
+                ].map(t => (
+                  <TouchableOpacity key={t.key} style={[st.editTypeBtn, editType === t.key && st.editTypeBtnActive]} onPress={() => setEditType(t.key)} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 16 }}>{t.emoji}</Text>
+                    <Text style={[st.editTypeBtnText, editType === t.key && { color: BLUE }]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -792,7 +808,7 @@ const st = StyleSheet.create({
   editSectionTitle: { fontSize: 13, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
   editFieldLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
   editInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, fontWeight: '600', color: TXT1, backgroundColor: BG_SEC, marginBottom: 12, fontFamily: 'Manrope_400Regular' },
-  editTypeBtn: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
+  editTypeBtn: { width: '30%', flexGrow: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent', gap: 2 },
   editTypeBtnActive: { backgroundColor: BLUE_L, borderColor: BLUE + '40' },
   editTypeBtnText: { fontSize: 11, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
   editIncomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: BG_SEC, marginBottom: 12 },

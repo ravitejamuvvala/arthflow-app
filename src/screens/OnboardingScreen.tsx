@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
     Animated,
     Dimensions,
@@ -84,11 +84,15 @@ function fmtInr(val: number) {
 }
 
 // ─── Slider ─────────────────────────────────────────────────────────────
-function SliderRow({ label, sublabel, value, min, max, step, color, onChange }: {
-  label: string; sublabel?: string; value: number; min: number; max: number; step: number; color: string; onChange: (v: number) => void
+function SliderRow({ label, sublabel, value, min, max, step, color, onChange, prefix = '₹', suffix = '' }: {
+  label: string; sublabel?: string; value: number; min: number; max: number; step: number; color: string; onChange: (v: number) => void; prefix?: string; suffix?: string
 }) {
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   const trackWidth = SCREEN_W - 80
+  const [inputText, setInputText] = useState(String(value))
+
+  // Sync input text when value changes from slider
+  useEffect(() => { setInputText(String(value)) }, [value])
 
   const onTouch = (pageX: number) => {
     const raw = ((pageX - 40) / trackWidth) * (max - min) + min
@@ -96,15 +100,37 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange }: 
     onChange(Math.max(min, Math.min(max, snapped)))
   }
 
+  const onInputSubmit = () => {
+    const parsed = parseInt(inputText.replace(/[^0-9]/g, ''), 10)
+    if (!isNaN(parsed)) {
+      const clamped = Math.max(min, Math.min(max, parsed))
+      onChange(clamped)
+      setInputText(String(clamped))
+    } else {
+      setInputText(String(value))
+    }
+  }
+
   return (
     <View style={s.sliderWrap}>
       <View style={s.sliderHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={s.sliderLabel}>{label}</Text>
           {sublabel && <Text style={s.sliderSub}>{sublabel}</Text>}
         </View>
-        <View style={[s.sliderBadge, { backgroundColor: color + '18' }]}>
-          <Text style={[s.sliderBadgeText, { color }]}>{fmtInr(value)}</Text>
+        <View style={[s.sliderInputWrap, { borderColor: color + '40' }]}>
+          {prefix ? <Text style={[s.sliderInputPrefix, { color }]}>{prefix}</Text> : null}
+          <TextInput
+            style={[s.sliderInput, { color }]}
+            value={inputText}
+            onChangeText={setInputText}
+            onBlur={onInputSubmit}
+            onSubmitEditing={onInputSubmit}
+            keyboardType="numeric"
+            returnKeyType="done"
+            selectTextOnFocus
+          />
+          {suffix ? <Text style={[s.sliderInputSuffix, { color }]}>{suffix}</Text> : null}
         </View>
       </View>
       <View
@@ -146,7 +172,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
   // Step 1: Basics
   const [name, setName]             = useState('')
   const [age, setAge]               = useState(28)
-  const [incomeType, setIncomeType] = useState<'salary' | 'business' | 'freelance'>('salary')
+  const [incomeType, setIncomeType] = useState('salary')
+  const [customIncomeType, setCustomIncomeType] = useState('')
   // Step 2: Income & Expenses
   const [income, setIncome]         = useState(80000)
   const [essentials, setEssentials] = useState(25000)
@@ -186,7 +213,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
       id: user.id,
       full_name: name || 'Friend',
       monthly_income: income,
-      income_type: incomeType,
+      income_type: incomeType === 'other' ? (customIncomeType.trim() || 'other') : incomeType,
       expenses_essentials: essentials,
       expenses_lifestyle: lifestyle,
       expenses_emis: emis,
@@ -295,8 +322,19 @@ export default function OnboardingScreen({ onComplete }: Props) {
           <View style={{ marginTop: 24 }}>
             <View style={s.sliderHeader}>
               <Text style={s.fieldLabel}>Your age</Text>
-              <View style={[s.sliderBadge, { backgroundColor: BLUE + '18' }]}>
-                <Text style={[s.sliderBadgeText, { color: BLUE }]}>{age} years</Text>
+              <View style={[s.sliderInputWrap, { borderColor: BLUE + '40' }]}>
+                <TextInput
+                  style={[s.sliderInput, { color: BLUE }]}
+                  value={String(age)}
+                  onChangeText={t => {
+                    const parsed = parseInt(t.replace(/[^0-9]/g, ''), 10)
+                    if (!isNaN(parsed)) setAge(Math.max(18, Math.min(70, parsed)))
+                  }}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                  selectTextOnFocus
+                />
+                <Text style={[s.sliderInputSuffix, { color: BLUE }]}>yrs</Text>
               </View>
             </View>
             <View
@@ -318,19 +356,38 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
           {/* Income type */}
           <Text style={[s.fieldLabel, { marginTop: 24 }]}>Income type</Text>
-          <View style={s.incomeTypeRow}>
-            {(['salary', 'business', 'freelance'] as const).map(type => (
+          <View style={s.incomeTypeGrid}>
+            {[
+              { key: 'salary',    emoji: '💼', label: 'Salaried' },
+              { key: 'business',  emoji: '🏢', label: 'Business' },
+              { key: 'freelance', emoji: '👤', label: 'Freelance' },
+              { key: 'homemaker', emoji: '🏠', label: 'Homemaker' },
+              { key: 'student',   emoji: '🎓', label: 'Student' },
+              { key: 'retired',   emoji: '🏖️', label: 'Retired' },
+              { key: 'other',     emoji: '✏️', label: 'Other' },
+            ].map(type => (
               <TouchableOpacity
-                key={type}
-                style={[s.incomeTypeChip, incomeType === type && s.incomeTypeChipActive]}
-                onPress={() => setIncomeType(type)}
+                key={type.key}
+                style={[s.incomeTypeChip, incomeType === type.key && s.incomeTypeChipActive]}
+                onPress={() => { setIncomeType(type.key); if (type.key !== 'other') setCustomIncomeType('') }}
               >
-                <Text style={[s.incomeTypeChipText, incomeType === type && s.incomeTypeChipTextActive]}>
-                  {type === 'salary' ? '💼 Salaried' : type === 'business' ? '📊 Business' : '👤 Freelance'}
+                <Text style={{ fontSize: 18 }}>{type.emoji}</Text>
+                <Text style={[s.incomeTypeChipText, incomeType === type.key && s.incomeTypeChipTextActive]}>
+                  {type.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+          {incomeType === 'other' && (
+            <TextInput
+              style={[s.textInput, { marginTop: 12 }]}
+              placeholder="Enter your income type"
+              placeholderTextColor={TXT3}
+              value={customIncomeType}
+              onChangeText={setCustomIncomeType}
+              autoCapitalize="words"
+            />
+          )}
         </ScrollView>
 
         <View style={s.navArea}>
@@ -363,16 +420,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
         {/* Income card */}
         <View style={s.incomeCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <View>
-              <Text style={s.sliderLabel}>Monthly Income</Text>
-              <Text style={s.sliderSub}>Your take-home / net income</Text>
-            </View>
-            <View style={[s.sliderBadge, { backgroundColor: BLUE + '15' }]}>
-              <Text style={[s.sliderBadgeText, { color: BLUE, fontSize: 16 }]}>{fmtInr(income)}</Text>
-            </View>
-          </View>
-          <SliderRow label="" value={income} min={INCOME_MIN} max={INCOME_MAX} step={5000} color={BLUE} onChange={setIncome} />
+          <SliderRow label="Monthly Income" sublabel="Your take-home / net income" value={income} min={INCOME_MIN} max={INCOME_MAX} step={5000} color={BLUE} onChange={setIncome} />
         </View>
 
         {/* Expense breakdown card */}
@@ -392,7 +440,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
             <Text style={s.savingsAmount}>{fmtInr(Math.abs(savings))}</Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 11, color: TXT3 }}>Savings rate</Text>
+            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: TXT3 }}>Savings rate</Text>
             <Text style={[s.savingsRate, { color: savings >= 0 ? GREEN_H : RED }]}>{savePct}%</Text>
           </View>
         </View>
@@ -440,7 +488,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         {selectedGoals.length > 0 && (
           <View style={{ marginTop: 16, borderRadius: 16, backgroundColor: TEAL_L, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Text style={{ fontSize: 14 }}>✨</Text>
-            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TEAL, flex: 1, lineHeight: 18 }}>
+            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 14, color: TEAL, flex: 1, lineHeight: 20 }}>
               {selectedGoals.length} goal{selectedGoals.length !== 1 ? 's' : ''} selected. You can set target amounts and timelines in the Goals tab after setup.
             </Text>
           </View>
@@ -599,57 +647,61 @@ const s = StyleSheet.create({
   welcomeTagline: { fontFamily: 'Manrope_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 6 },
   welcomeBody: { flex: 1, paddingHorizontal: 24, paddingTop: 28, gap: 18 },
   welcomeTitle: { fontFamily: 'Manrope_700Bold', fontSize: 24, fontWeight: '800', color: TXT1, letterSpacing: -0.3, lineHeight: 30 },
-  welcomeDesc: { fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT3, lineHeight: 22, marginBottom: 4 },
+  welcomeDesc: { fontFamily: 'Manrope_400Regular', fontSize: 16, color: TXT3, lineHeight: 24, marginBottom: 4 },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   featureIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  featureTitle: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '800', color: TXT1 },
-  featureDesc: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginTop: 1 },
+  featureTitle: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '800', color: TXT1 },
+  featureDesc: { fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT3, marginTop: 1 },
 
   // Steps
   stepBody: { flex: 1, paddingHorizontal: 24, paddingTop: 32 },
   stepBodyScroll: { paddingHorizontal: 24, paddingTop: 32, paddingBottom: 20 },
   stepTitle: { fontFamily: 'Manrope_700Bold', fontSize: 24, fontWeight: '800', color: TXT1, letterSpacing: -0.3, lineHeight: 30, marginTop: 20 },
-  stepDesc: { fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT3, marginTop: 6, lineHeight: 22 },
+  stepDesc: { fontFamily: 'Manrope_400Regular', fontSize: 16, color: TXT3, marginTop: 6, lineHeight: 24 },
 
   // Step indicator
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stepDot: { height: 4, width: 8, borderRadius: 2, backgroundColor: BG_SEC },
   stepDotActive: { width: 28, backgroundColor: BLUE },
-  stepLabel: { fontFamily: 'Manrope_400Regular', fontSize: 12, fontWeight: '600', color: TXT3, marginLeft: 4 },
+  stepLabel: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT3, marginLeft: 4 },
 
   // Slider
   sliderWrap: { marginTop: 8 },
   sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sliderLabel: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700', color: TXT1 },
-  sliderSub: { fontFamily: 'Manrope_400Regular', fontSize: 11, color: TXT3, marginTop: 1 },
+  sliderLabel: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '700', color: TXT1 },
+  sliderSub: { fontFamily: 'Manrope_400Regular', fontSize: 13, color: TXT3, marginTop: 1 },
   sliderBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   sliderBadgeText: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800' },
+  sliderInputWrap: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#fff', gap: 2 },
+  sliderInput: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '800', minWidth: 50, textAlign: 'right', paddingVertical: 2 },
+  sliderInputPrefix: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700' },
+  sliderInputSuffix: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600' },
   sliderTrackWrap: { height: 40, justifyContent: 'center', position: 'relative' },
   sliderTrackBg: { position: 'absolute', left: 0, right: 0, height: 6, borderRadius: 3, backgroundColor: BG_SEC },
   sliderTrackFill: { position: 'absolute', left: 0, height: 6, borderRadius: 3 },
   sliderThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, marginLeft: -11, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 4, borderWidth: 3, borderColor: '#fff' },
   sliderMinMax: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  sliderMinMaxText: { fontFamily: 'Manrope_400Regular', fontSize: 11, fontWeight: '600', color: TXT3 },
+  sliderMinMaxText: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: TXT3 },
 
   // Income step
-  incomeTypeRow: { flexDirection: 'row', gap: 10 },
-  incomeTypeChip: { flex: 1, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, borderColor: BORDER, alignItems: 'center', backgroundColor: '#fff' },
+  incomeTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  incomeTypeChip: { width: '30%', flexGrow: 1, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, borderColor: BORDER, alignItems: 'center', backgroundColor: '#fff', gap: 4 },
   incomeTypeChipActive: { borderColor: BLUE, backgroundColor: BLUE, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
-  incomeTypeChipText: { fontFamily: 'Manrope_700Bold', fontSize: 12, fontWeight: '700', color: TXT2 },
+  incomeTypeChipText: { fontFamily: 'Manrope_700Bold', fontSize: 13, fontWeight: '700', color: TXT2 },
   incomeTypeChipTextActive: { color: '#fff' },
 
   // Basics step
-  fieldLabel: { fontFamily: 'Manrope_700Bold', fontSize: 13, fontWeight: '700', color: TXT2, marginBottom: 8, marginTop: 0 },
+  fieldLabel: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '700', color: TXT2, marginBottom: 8, marginTop: 0 },
   textInput: { height: 52, borderRadius: 16, backgroundColor: BG_SEC, paddingHorizontal: 16, fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '700', color: TXT1 },
   riskCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 14, marginTop: 16, borderWidth: 1 },
-  riskTitle: { fontFamily: 'Manrope_700Bold', fontSize: 13, fontWeight: '800', color: TXT1 },
-  riskSub: { fontFamily: 'Manrope_400Regular', fontSize: 11, fontWeight: '500', color: TXT2, marginTop: 2 },
+  riskTitle: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800', color: TXT1 },
+  riskSub: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '500', color: TXT2, marginTop: 2 },
 
   // Income & Expenses step
   incomeCard: { borderRadius: 20, backgroundColor: '#fff', padding: 16, marginTop: 20, borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
   expenseCard: { borderRadius: 20, backgroundColor: '#fff', padding: 16, marginTop: 12, borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
   savingsPreview: { flexDirection: 'row', borderRadius: 20, padding: 16, marginTop: 12, borderWidth: 1, alignItems: 'center' },
-  savingsLabel: { fontFamily: 'Manrope_700Bold', fontSize: 12, fontWeight: '700' },
+  savingsLabel: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700' },
   savingsAmount: { fontFamily: 'Manrope_700Bold', fontSize: 24, fontWeight: '800', color: TXT1, marginTop: 2 },
   savingsRate: { fontFamily: 'Manrope_700Bold', fontSize: 20, fontWeight: '800' },
 
@@ -665,10 +717,10 @@ const s = StyleSheet.create({
   // Goal detail editors
   goalDetailCard: { borderRadius: 18, backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2, overflow: 'hidden' },
   goalDetailHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  goalDetailName: { fontFamily: 'Manrope_700Bold', fontSize: 13, fontWeight: '800', color: TXT1 },
-  goalDetailSub: { fontFamily: 'Manrope_400Regular', fontSize: 12, fontWeight: '600', color: TXT3 },
+  goalDetailName: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800', color: TXT1 },
+  goalDetailSub: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT3 },
   goalDetailBody: { paddingHorizontal: 16, paddingBottom: 16, borderTopWidth: 1, borderTopColor: BG_SEC, paddingTop: 12 },
-  goalDetailFieldLabel: { fontFamily: 'Manrope_700Bold', fontSize: 12, fontWeight: '700', color: TXT2, marginBottom: 6 },
+  goalDetailFieldLabel: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700', color: TXT2, marginBottom: 6 },
 
   // Summary step
   summaryHero: { backgroundColor: '#0B1B4A', paddingTop: 48, paddingBottom: 32, paddingHorizontal: 24, position: 'relative', overflow: 'hidden' },
@@ -676,7 +728,7 @@ const s = StyleSheet.create({
   summaryHeadline: { fontFamily: 'Manrope_700Bold', fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   summaryStats: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 24 },
   summaryStatVal: { fontFamily: 'Manrope_700Bold', fontSize: 18, fontWeight: '800', color: '#E0A820' },
-  summaryStatLabel: { fontFamily: 'Manrope_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
+  summaryStatLabel: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
   summaryCard: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 20, padding: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
   riskIconBox: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   aiDoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
@@ -696,7 +748,7 @@ const s = StyleSheet.create({
   goalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 24 },
   goalChip: { width: (SCREEN_W - 60) / 2, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 14, borderWidth: 2, borderColor: BORDER, backgroundColor: '#fff' },
   goalChipSelected: { borderColor: BLUE, backgroundColor: BLUE_L },
-  goalChipText: { fontFamily: 'Manrope_400Regular', fontSize: 12, fontWeight: '600', color: TXT3, flex: 1 },
+  goalChipText: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT3, flex: 1 },
   goalChipTextSelected: { fontFamily: 'Manrope_700Bold', fontWeight: '800', color: BLUE },
   goalCheck: { width: 20, height: 20, borderRadius: 10, backgroundColor: BLUE, alignItems: 'center', justifyContent: 'center' },
 
@@ -704,9 +756,9 @@ const s = StyleSheet.create({
   navArea: { paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
   navRow: { flexDirection: 'row', gap: 12 },
   primaryBtn: { backgroundColor: BLUE, borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: '#1E3A8A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.32, shadowRadius: 24, elevation: 8 },
-  primaryBtnText: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800', color: '#fff' },
+  primaryBtnText: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '800', color: '#fff' },
   primaryBtnArrow: { fontSize: 20, fontWeight: '300', color: '#fff' },
   backBtn: { width: 56, borderRadius: 16, borderWidth: 2, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
   backBtnText: { fontSize: 24, fontWeight: '300', color: TXT2 },
-  trustText: { fontFamily: 'Manrope_400Regular', fontSize: 11, fontWeight: '600', color: TXT3, textAlign: 'center', marginTop: 12 },
+  trustText: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: TXT3, textAlign: 'center', marginTop: 12 },
 })

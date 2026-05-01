@@ -23,7 +23,7 @@ export type Profile = {
   id: string
   full_name: string | null
   monthly_income: number | null
-  income_type: 'salary' | 'business' | 'freelance' | null
+  income_type: string | null
   expenses_essentials: number | null
   expenses_lifestyle: number | null
   expenses_emis: number | null
