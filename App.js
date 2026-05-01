@@ -69,6 +69,11 @@ export default function App() {
         clearLocalData()
         setSession(null)
         setIsOnboarded(null)
+      } else if (event === 'SIGNED_IN') {
+        // New login/signup — clear any stale local data from previous user
+        clearLocalData()
+        setSession(session)
+        setActiveTab('home')
       } else {
         setSession(session)
         if (!session) {
@@ -129,7 +134,7 @@ export default function App() {
   if (isOnboarded === false) {
     return (
       <SafeAreaView style={styles.container}>
-        <OnboardingScreen onComplete={() => setIsOnboarded(true)} />
+        <OnboardingScreen onComplete={() => { clearLocalData(); setActiveTab('home'); setIsOnboarded(true) }} />
       </SafeAreaView>
     )
   }

@@ -3,6 +3,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import {
     Animated,
     Dimensions,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -90,9 +92,10 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   const trackWidth = SCREEN_W - 80
   const [inputText, setInputText] = useState(String(value))
+  const isFocused = useRef(false)
 
-  // Sync input text when value changes from slider
-  useEffect(() => { setInputText(String(value)) }, [value])
+  // Sync input text when value changes from slider — but NOT while user is typing
+  useEffect(() => { if (!isFocused.current) setInputText(String(value)) }, [value])
 
   const onTouch = (pageX: number) => {
     const raw = ((pageX - 40) / trackWidth) * (max - min) + min
@@ -101,6 +104,7 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
   }
 
   const onInputSubmit = () => {
+    isFocused.current = false
     const parsed = parseInt(inputText.replace(/[^0-9]/g, ''), 10)
     if (!isNaN(parsed)) {
       const clamped = Math.max(min, Math.min(max, parsed))
@@ -124,6 +128,7 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
             style={[s.sliderInput, { color }]}
             value={inputText}
             onChangeText={setInputText}
+            onFocus={() => { isFocused.current = true }}
             onBlur={onInputSubmit}
             onSubmitEditing={onInputSubmit}
             keyboardType="numeric"
@@ -172,6 +177,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
   // Step 1: Basics
   const [name, setName]             = useState('')
   const [age, setAge]               = useState(28)
+  const [ageText, setAgeText]       = useState('28')
+  const ageInputFocused             = useRef(false)
   const [incomeType, setIncomeType] = useState('salary')
   const [customIncomeType, setCustomIncomeType] = useState('')
   // Step 2: Income & Expenses
@@ -184,6 +191,9 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const [saving, setSaving]         = useState(false)
 
   const fadeAnim = useRef(new Animated.Value(1)).current
+
+  // Sync ageText when slider changes age (but not while user is typing)
+  useEffect(() => { if (!ageInputFocused.current) setAgeText(String(age)) }, [age])
 
   const totalExpenses = essentials + lifestyle + emis
   const savings  = income - totalExpenses
@@ -302,8 +312,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
       setAge(Math.max(18, Math.min(70, Math.round(raw))))
     }
     return (
-      <View style={s.stepContainer}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={s.stepContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <StepDots current={1} total={4} />
           <Text style={s.stepTitle}>Let's start with you</Text>
           <Text style={s.stepDesc}>This personalises your entire experience.</Text>
@@ -312,10 +322,12 @@ export default function OnboardingScreen({ onComplete }: Props) {
           <Text style={s.fieldLabel}>Your name</Text>
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={t => setName(t.replace(/[^a-zA-Z\s]/g, ''))}
             placeholder="e.g. Arjun Sharma"
             placeholderTextColor={TXT3}
             style={s.textInput}
+            autoCapitalize="words"
+            autoCorrect={false}
           />
 
           {/* Age */}
@@ -325,10 +337,20 @@ export default function OnboardingScreen({ onComplete }: Props) {
               <View style={[s.sliderInputWrap, { borderColor: BLUE + '40' }]}>
                 <TextInput
                   style={[s.sliderInput, { color: BLUE }]}
-                  value={String(age)}
-                  onChangeText={t => {
-                    const parsed = parseInt(t.replace(/[^0-9]/g, ''), 10)
-                    if (!isNaN(parsed)) setAge(Math.max(18, Math.min(70, parsed)))
+                  value={ageText}
+                  onChangeText={setAgeText}
+                  onFocus={() => { ageInputFocused.current = true }}
+                  onBlur={() => {
+                    ageInputFocused.current = false
+                    const parsed = parseInt(ageText.replace(/[^0-9]/g, ''), 10)
+                    if (!isNaN(parsed)) { const c = Math.max(18, Math.min(70, parsed)); setAge(c); setAgeText(String(c)) }
+                    else setAgeText(String(age))
+                  }}
+                  onSubmitEditing={() => {
+                    ageInputFocused.current = false
+                    const parsed = parseInt(ageText.replace(/[^0-9]/g, ''), 10)
+                    if (!isNaN(parsed)) { const c = Math.max(18, Math.min(70, parsed)); setAge(c); setAgeText(String(c)) }
+                    else setAgeText(String(age))
                   }}
                   keyboardType="numeric"
                   returnKeyType="done"
@@ -406,14 +428,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     )
   }
 
   // ─── Step 2: Income & Expenses ───────────────────────────────────
   const renderIncomeExpenses = () => (
-    <View style={s.stepContainer}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView style={s.stepContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <StepDots current={2} total={4} />
         <Text style={s.stepTitle}>Your monthly money flow</Text>
         <Text style={s.stepDesc}>This is your base — AI adjusts when income changes month to month.</Text>
@@ -457,7 +479,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   )
 
   // ─── Step 3: Goals (select only) ───────────────────────────────────

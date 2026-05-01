@@ -483,10 +483,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
 
       {/* ── Blueprint (compact) ──────────────────────────── */}
       <View style={s.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <Text style={s.cardTitle}>Money Blueprint</Text>
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
         </View>
+        {flow.isEstimated && (
+          <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 11, color: TXT3, marginBottom: 10 }}>Based on your onboarding budget — add expenses for actuals</Text>
+        )}
         {[
           { label: 'Committed', emoji: '🏦', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
           { label: 'Lifestyle', emoji: '🌟', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
