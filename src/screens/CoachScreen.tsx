@@ -566,12 +566,30 @@ export default function CoachScreen() {
         <View style={[s.sectionRow, { marginTop: 20 }]}>
           <Text style={s.sectionTitle}>🛡️ Risk & Protection</Text>
         </View>
-        {[
-          { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'No policy found.', impact: 'A medical emergency can wipe out your savings in weeks.' },
-          { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: 'partial' as const, desc: '1 month covered.', impact: 'You need 6 months of expenses — currently at ~1 month.' },
-          { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'No coverage.', impact: 'Your family loses financial protection without this.' },
-          { id: 'income', label: 'Income Protection', icon: '💼', status: 'ok' as const, desc: 'PF/ESI active via employer.', impact: '' },
-        ].map(item => {
+        {(() => {
+          const monthlyExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+          const liquid = assets?.liquidCash ?? 0
+          const epf = assets?.epf ?? 0
+          const needed6 = (monthlyExp || (profile?.expenses_essentials ?? 0) + (profile?.expenses_lifestyle ?? 0) + (profile?.expenses_emis ?? 0)) * 6
+          const monthsCovered = needed6 > 0 ? Math.floor(liquid / (needed6 / 6)) : 0
+
+          const emergencyStatus: 'ok' | 'partial' | 'missing' = monthsCovered >= 6 ? 'ok' : monthsCovered >= 1 ? 'partial' : 'missing'
+          const emergencyDesc = monthsCovered >= 6
+            ? `${monthsCovered} months covered ✅`
+            : monthsCovered >= 1
+            ? `~${monthsCovered} month${monthsCovered > 1 ? 's' : ''} covered — need 6 months.`
+            : 'No emergency fund yet.'
+          const emergencyImpact = monthsCovered < 6
+            ? `You need ${fmtInr(needed6)} (6 months of expenses) — currently ${fmtInr(liquid)} in liquid cash.`
+            : ''
+
+          const items = [
+            { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: emergencyStatus, desc: emergencyDesc, impact: emergencyImpact },
+            { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Not tracked yet.', impact: 'A medical emergency can wipe out savings. Ask me for a plan.' },
+            { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Not tracked yet.', impact: 'Your family needs financial protection. Ask me for advice.' },
+          ]
+
+          return items.map(item => {
           const isMissing = item.status === 'missing'
           const isPartial = item.status === 'partial'
           const isOk = item.status === 'ok'
@@ -603,7 +621,7 @@ export default function CoachScreen() {
               )}
             </View>
           )
-        })}
+        })})()}
 
         {/* ── Quick Ask (Collapsible Chat) ─── */}
         <View style={{ marginTop: 24 }}>
