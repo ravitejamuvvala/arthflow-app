@@ -116,6 +116,16 @@ function getChallenges(txns: Transaction[], profile: Profile | null) {
 // ─── AI Reply (keyword-matching) ────────────────────────────────────────
 function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profile: Profile | null) {
   const lc = msg.toLowerCase()
+
+  // ── Finance-only guardrail ──
+  const financeKeywords = [
+    'money','spend','spent','saving','save','invest','sip','mutual','fund','stock','insurance','protect','cover','term','health','tax','80c','80d','deduction','budget','income','salary','expense','emi','loan','debt','credit','goal','retire','pension','nps','ppf','epf','pf','gold','real estate','property','rent','crypto','emergency','liquid','net worth','wealth','portfolio','return','compound','lakh','crore','inflation','bonus','hike','appraisal','slab','gst','tds','itr','fd','fixed deposit','rd','recurring','bank','upi','payment','lifestyle','essentials','dining','shopping','subscription','cut','trim','reduce','boost','improve','track','funded','needs','how am i doing','overall','score','snapshot','surplus','where to put','creep','safety net','find saving','review expense','high','overspend',
+  ]
+  const isFinance = financeKeywords.some(k => lc.includes(k))
+  if (!isFinance) {
+    return `I'm your ArthFlow finance coach — I can only help with money and finance questions! 💰\n\nAsk me about your savings, investments, taxes, insurance, budgets, or goals.`
+  }
+
   const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const totalExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const saved = Math.max(0, income - totalExp)
@@ -300,17 +310,55 @@ export default function CoachScreen() {
     // Scroll to chat section
     setTimeout(() => mainScroll.current?.scrollToEnd({ animated: true }), 300)
 
-    // Build context from real user data
-    const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const spent = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
-    const realIncome = income > 0 ? income : (profile?.monthly_income ?? 0)
+    // Always fetch FRESH data from Supabase before sending to AI
+    let freshTxns = txns
+    let freshGoals = goals
+    let freshProfile = profile
+    let freshAssets = assets
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const startOfMonth = new Date()
+        startOfMonth.setDate(1)
+        startOfMonth.setHours(0, 0, 0, 0)
+
+        const [txnRes, goalRes, profileRes] = await Promise.all([
+          supabase.from('transactions').select('*').gte('date', startOfMonth.toISOString()).order('date', { ascending: false }),
+          supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+          supabase.from('profiles').select('*').eq('id', user.id).single(),
+        ])
+        freshTxns = txnRes.data ?? txns
+        freshGoals = goalRes.data ?? goals
+        freshProfile = profileRes.data ?? profile
+
+        try {
+          const raw = await AsyncStorage.getItem('@arthflow_assets')
+          if (raw) freshAssets = JSON.parse(raw)
+        } catch {}
+
+        // Also update component state so UI stays in sync
+        setTxns(freshTxns)
+        setGoals(freshGoals)
+        setProfile(freshProfile)
+        setAssets(freshAssets)
+      }
+    } catch (e) {
+      console.error('Failed to fetch fresh data for AI chat:', e)
+    }
+
+    // Build context from fresh data
+    const income = freshTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+    const spent = freshTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    const lifestyle = freshTxns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
+    const essentials = freshTxns.filter(t => t.category === 'essentials').reduce((s, t) => s + t.amount, 0)
+    const emis = freshTxns.filter(t => t.category === 'emis').reduce((s, t) => s + t.amount, 0)
+    const realIncome = income > 0 ? income : (freshProfile?.monthly_income ?? 0)
 
     const chatContext = {
-      profile,
-      transactions: txns,
-      goals,
-      assets,
+      profile: freshProfile,
+      transactions: freshTxns,
+      goals: freshGoals,
+      assets: freshAssets,
       monthlyFlow: {
         income: realIncome,
         spent,
@@ -318,6 +366,8 @@ export default function CoachScreen() {
         savePct: realIncome > 0 ? Math.round(((realIncome - spent) / realIncome) * 100) : 0,
         lifestyle,
         lifePct: realIncome > 0 ? Math.round((lifestyle / realIncome) * 100) : 0,
+        essentials,
+        emis,
       },
     }
 
@@ -327,7 +377,7 @@ export default function CoachScreen() {
     } catch (err) {
       console.error('AI chat error:', err)
       // Fallback to local reply if backend fails
-      const fallback = generateAIReply(msg, txns, goals, profile)
+      const fallback = generateAIReply(msg, freshTxns, freshGoals, freshProfile)
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
     } finally {
       setTyping(false)
