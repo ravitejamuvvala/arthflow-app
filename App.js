@@ -1,38 +1,94 @@
+import { Manrope_400Regular, Manrope_700Bold } from '@expo-google-fonts/manrope'
+import { NotoSerif_700Bold, useFonts } from '@expo-google-fonts/noto-serif'
+import { Feather } from '@expo/vector-icons'
+import * as SplashScreen from 'expo-splash-screen'
 import { useEffect, useState } from 'react'
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
+import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
 
 import AddTransactionScreen from './src/screens/AddTransactionScreen'
+import CoachScreen from './src/screens/CoachScreen'
 import GoalsScreen from './src/screens/GoalsScreen'
-import HomeScreen from './src/screens/HomeScreen'
 import LoginScreen from './src/screens/LoginScreen'
-import PlanScreen from './src/screens/PlanScreen'
+import OnboardingScreen from './src/screens/OnboardingScreen'
+import ProfileScreen from './src/screens/ProfileScreen'
+import ThisMonthScreen from './src/screens/ThisMonthScreen'
+import WealthScreen from './src/screens/WealthScreen'
+
+SplashScreen.preventAutoHideAsync()
+
+const TOP_INSET = initialWindowMetrics?.insets.top ?? 0
 
 export default function App() {
   const [session, setSession] = useState(null)
   const [activeTab, setActiveTab] = useState('home')
   const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [isOnboarded, setIsOnboarded] = useState(null) // null = loading, true/false = checked
+
+  const [fontsLoaded] = useFonts({
+    NotoSerif_700Bold,
+    Manrope_400Regular,
+    Manrope_700Bold,
+  })
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Clear stale/invalid session (e.g. expired refresh token)
+        supabase.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(session)
+      }
       setAuthLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        // Refresh token was invalid — force sign out
+        supabase.auth.signOut()
+        setSession(null)
+        setIsOnboarded(null)
+      } else {
+        setSession(session)
+        if (!session) setIsOnboarded(null)
+      }
       setAuthLoading(false)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  if (authLoading) {
+  // Check onboarding status when session exists
+  useEffect(() => {
+    if (!session) return
+    supabase
+      .from('profiles')
+      .select('is_onboarded')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data }) => {
+        setIsOnboarded(data?.is_onboarded === true)
+      })
+      .catch(() => setIsOnboarded(false))
+  }, [session])
+
+  useEffect(() => {
+    if (fontsLoaded && !authLoading) {
+      SplashScreen.hideAsync()
+    }
+  }, [fontsLoaded, authLoading])
+
+  if (!fontsLoaded || authLoading) {
     return (
       <View style={styles.splash}>
-        <Text style={styles.splashLogo}>Arth<Text style={{ color: '#4F8EF7' }}>Flow</Text></Text>
+        <ArthFlowLogo size={80} />
+        <Text style={styles.splashLogo}>ARTHFLOW</Text>
+        <ActivityIndicator color="#1E3A8A" style={{ marginTop: 16 }} />
       </View>
     )
   }
@@ -41,43 +97,64 @@ export default function App() {
     return <LoginScreen />
   }
 
+  if (isOnboarded === null) {
+    return (
+      <View style={styles.splash}>
+        <ArthFlowLogo size={80} />
+        <Text style={styles.splashLogo}>ARTHFLOW</Text>
+        <ActivityIndicator color="#1E3A8A" style={{ marginTop: 16 }} />
+      </View>
+    )
+  }
+
+  if (isOnboarded === false) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <OnboardingScreen onComplete={() => setIsOnboarded(true)} />
+      </SafeAreaView>
+    )
+  }
+
+  // Status bar style per tab
+  const darkBar = activeTab === 'coach'
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.screen}>
-        {activeTab === 'home' && <HomeScreen onAddTransaction={() => setShowAddTransaction(true)} />}
-        {activeTab === 'goals' && <GoalsScreen />}
-        {activeTab === 'plan' && <PlanScreen />}
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle={darkBar ? 'dark-content' : 'light-content'} translucent backgroundColor="transparent" />
+      <View style={[styles.screen, { paddingTop: TOP_INSET }]}>
+        {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
+        {activeTab === 'plan' && <GoalsScreen />}
+        {activeTab === 'wealth' && <WealthScreen />}
+        {activeTab === 'coach' && <CoachScreen />}
+        {activeTab === 'profile' && <ProfileScreen />}
       </View>
 
       <View style={styles.tabBar}>
-        <TouchableOpacity style={[styles.tab, activeTab === 'home' && styles.tabActive]} onPress={() => setActiveTab('home')}>
-          <Text style={[styles.tabIcon, { fontSize: 28, color: activeTab === 'home' ? '#4F8EF7' : '#475569' }]}>⌂</Text>
-          <Text style={[styles.tabLabel, activeTab === 'home' && styles.tabLabelActive]}>Home</Text>
-          {activeTab === 'home' && <View style={styles.tabDot} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.tab, styles.addTab]} onPress={() => setShowAddTransaction(true)}>
-          <View style={styles.addTabCircle}>
-            <Text style={styles.addTabIcon}>+</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.tab, activeTab === 'goals' && styles.tabActive]} onPress={() => setActiveTab('goals')}>
-          <Text style={styles.tabIcon}>🎯</Text>
-          <Text style={[styles.tabLabel, activeTab === 'goals' && styles.tabLabelActive]}>Goals</Text>
-          {activeTab === 'goals' && <View style={styles.tabDot} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.tab, activeTab === 'plan' && styles.tabActive]} onPress={() => setActiveTab('plan')}>
-          <Text style={styles.tabIcon}>📊</Text>
-          <Text style={[styles.tabLabel, activeTab === 'plan' && styles.tabLabelActive]}>Plan</Text>
-          {activeTab === 'plan' && <View style={styles.tabDot} />}
-        </TouchableOpacity>
+        {[
+          { key: 'home', icon: 'home', label: 'Home' },
+          { key: 'plan', icon: 'target', label: 'Plan' },
+          { key: 'wealth', icon: 'briefcase', label: 'Wealth' },
+          { key: 'coach', icon: 'zap', label: 'Coach' },
+          { key: 'profile', icon: 'user', label: 'Me' },
+        ].map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={styles.tab}
+            onPress={() => setActiveTab(tab.key)}
+          >
+            {activeTab === tab.key && <View style={styles.tabPill} />}
+            <Feather name={tab.icon} size={20} color={activeTab === tab.key ? '#1E3A8A' : '#9CA3AF'} style={{ zIndex: 1, marginBottom: 3 }} />
+            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {activeTab === tab.key && <View style={styles.tabDot} />}
+          </TouchableOpacity>
+        ))}
       </View>
 
       <Modal visible={showAddTransaction} animationType="slide" presentationStyle="pageSheet">
         <AddTransactionScreen
-          onSuccess={() => setShowAddTransaction(false)}
+          onSuccess={() => { setShowAddTransaction(false); setRefreshKey(k => k + 1) }}
           onCancel={() => setShowAddTransaction(false)}
         />
       </Modal>
@@ -86,65 +163,36 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  splash: { flex: 1, backgroundColor: '#06091A', justifyContent: 'center', alignItems: 'center' },
-  splashLogo: { fontSize: 36, fontWeight: '800', color: '#F1F5F9', letterSpacing: -1 },
-  container: { flex: 1, backgroundColor: '#06091A' },
+  splash: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+  splashImage: { width: 96, height: 96, marginBottom: 16 },
+  splashLogo: { fontSize: 22, fontWeight: '700', color: '#1E293B', letterSpacing: 1.5, marginTop: 14, fontFamily: 'Manrope_700Bold' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   screen: { flex: 1 },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#0D1326',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.07)',
-    paddingBottom: 8,
-    paddingTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderTopWidth: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 6,
+    paddingTop: 6,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 0,
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
     zIndex: 1,
     position: 'relative',
+    shadowColor: '#0B1B4A',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 32,
+    elevation: 20,
   },
-  tab: { alignItems: 'center', justifyContent: 'center', minWidth: 60, flex: 1 },
+  tab: { alignItems: 'center', justifyContent: 'center', flex: 1, paddingTop: 8, paddingBottom: 4, position: 'relative' },
+  tabPill: { position: 'absolute', top: 2, bottom: 2, left: 8, right: 8, borderRadius: 16, backgroundColor: '#DBEAFE' },
   tabActive: {},
-  tabIcon: { fontSize: 22, marginBottom: 2 },
-  tabLabel: { fontSize: 13, color: '#475569', fontWeight: '600' },
-  tabLabelActive: { color: '#4F8EF7' },
-  tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#4F8EF7', marginTop: 3 },
-  addTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // No margin or width here; handled by addTabCircle
-  },
-  addTabCircle: {
-    backgroundColor: '#4F8EF7',
-    borderRadius: 28,
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-    left: '50%',
-    transform: [{ translateX: -28 }],
-    marginTop: -8,
-    // Embossed effect
-    shadowColor: '#1E293B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
-    zIndex: 2,
-  },
-  addTabIcon: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '900',
-    textShadowColor: '#1E293B',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-    marginBottom: 0,
-    marginTop: 0,
-    lineHeight: 32,
-  },
+  tabIcon: { fontSize: 20, marginBottom: 3, zIndex: 1 },
+  tabLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '600', fontFamily: 'Manrope_400Regular', letterSpacing: 0.4, zIndex: 1, textTransform: 'uppercase' },
+  tabLabelActive: { color: '#1E3A8A', fontWeight: '800', fontFamily: 'Manrope_700Bold', letterSpacing: 0.2 },
+  tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#1E3A8A', marginTop: 3, zIndex: 1 },
+
 })

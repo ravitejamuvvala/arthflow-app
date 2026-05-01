@@ -36,3 +36,31 @@ export async function fetchInsight(payload) {
 }
 
 export const fetchAiInsight = fetchInsight
+
+export async function fetchAiChat(message, context) {
+  const headers = await getAuthHeader()
+
+  let res
+  try {
+    res = await fetch(`${CONFIG.BACKEND_URL}/insights/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ message, context }),
+    })
+  } catch (err) {
+    console.error('Network error in AI chat:', err)
+    throw new Error('Network error: ' + err.message)
+  }
+
+  if (!res.ok) {
+    let msg = 'AI chat failed'
+    try {
+      const errData = await res.json()
+      msg += ': ' + (errData.error || JSON.stringify(errData))
+    } catch {}
+    throw new Error(msg)
+  }
+
+  const data = await res.json()
+  return data.reply
+}

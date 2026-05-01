@@ -11,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native'
+import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 
 const EXPENSE_CATEGORIES = [
@@ -77,6 +78,11 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.brandRow}>
+          <ArthFlowLogo size={24} />
+          <Text style={styles.brandText}>ARTHFLOW</Text>
+        </View>
+
         <View style={styles.header}>
           <TouchableOpacity onPress={onCancel}>
             <Text style={styles.cancel}>Cancel</Text>
@@ -109,7 +115,7 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
           <TextInput
             style={styles.amountInput}
             placeholder="0"
-            placeholderTextColor="#4B5563"
+            placeholderTextColor="#9CA3AF"
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
@@ -136,7 +142,7 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
         <TextInput
           style={styles.noteInput}
           placeholder="e.g. Lunch with team"
-          placeholderTextColor="#4B5563"
+          placeholderTextColor="#9CA3AF"
           value={note}
           onChangeText={setNote}
           maxLength={100}
@@ -158,28 +164,30 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#06091A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20, paddingBottom: 48 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginBottom: 12 },
+  brandText: { fontSize: 15, fontWeight: '700', color: '#1E293B', letterSpacing: 1.2, fontFamily: 'Manrope_700Bold' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 },
-  cancel: { fontSize: 15, color: '#94A3B8', width: 56 },
-  title: { fontSize: 17, fontWeight: '700', color: '#F1F5F9' },
-  toggle: { flexDirection: 'row', backgroundColor: '#0D1326', borderRadius: 14, padding: 4, marginBottom: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
-  toggleActive: { backgroundColor: '#4F8EF7' },
-  toggleActiveGreen: { backgroundColor: '#34D399' },
-  toggleText: { fontSize: 15, fontWeight: '600', color: '#475569' },
+  cancel: { fontSize: 15, color: '#6B7280', width: 56, fontFamily: 'Manrope_400Regular' },
+  title: { fontSize: 17, fontWeight: '700', color: '#111827', fontFamily: 'Manrope_700Bold' },
+  toggle: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 16, padding: 4, marginBottom: 32, borderWidth: 1, borderColor: '#E5E7EB' },
+  toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
+  toggleActive: { backgroundColor: '#1E3A8A' },
+  toggleActiveGreen: { backgroundColor: '#22C55E' },
+  toggleText: { fontSize: 15, fontWeight: '600', color: '#9CA3AF', fontFamily: 'Manrope_700Bold' },
   toggleTextActive: { color: '#fff' },
   amountContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 36 },
-  rupee: { fontSize: 36, fontWeight: '700', color: '#94A3B8', marginRight: 4 },
-  amountInput: { fontSize: 56, fontWeight: '800', color: '#F1F5F9', minWidth: 120, letterSpacing: -2 },
-  sectionLabel: { fontSize: 12, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  rupee: { fontSize: 36, fontWeight: '700', color: '#6B7280', marginRight: 4, fontFamily: 'Manrope_700Bold' },
+  amountInput: { fontSize: 56, fontWeight: '800', color: '#111827', minWidth: 120, letterSpacing: -2, fontFamily: 'Manrope_700Bold' },
+  sectionLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12, fontFamily: 'Manrope_700Bold' },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 },
-  categoryChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#0D1326', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  categoryChipActive: { backgroundColor: 'rgba(79,142,247,0.15)', borderColor: '#4F8EF7' },
-  categoryText: { fontSize: 14, color: '#94A3B8', fontWeight: '500' },
-  categoryTextActive: { color: '#4F8EF7', fontWeight: '700' },
-  noteInput: { backgroundColor: '#0D1326', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 14, fontSize: 15, color: '#F1F5F9', marginBottom: 32 },
-  submitBtn: { backgroundColor: '#4F8EF7', borderRadius: 16, paddingVertical: 18, alignItems: 'center' },
+  categoryChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E5E7EB' },
+  categoryChipActive: { backgroundColor: 'rgba(30,58,138,0.08)', borderColor: '#1E3A8A' },
+  categoryText: { fontSize: 14, color: '#6B7280', fontWeight: '500', fontFamily: 'Manrope_400Regular' },
+  categoryTextActive: { color: '#1E3A8A', fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  noteInput: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, paddingHorizontal: 18, paddingVertical: 14, fontSize: 15, color: '#111827', marginBottom: 32, fontFamily: 'Manrope_400Regular' },
+  submitBtn: { backgroundColor: '#1E3A8A', borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowColor: '#1E3A8A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },
   submitDisabled: { opacity: 0.6 },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  submitText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
 })
