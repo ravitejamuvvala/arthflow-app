@@ -14,6 +14,7 @@ import {
     View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import { fetchAiChat } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr } from '../utils/calculations'
@@ -122,43 +123,74 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   const age = profile?.age ?? 28
   const name = profile?.full_name?.split(' ')[0] ?? 'there'
   const monthlyIncome = profile?.monthly_income ?? income
+  const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
+  const lifePct = income > 0 ? Math.round((lifestyle / income) * 100) : 0
 
-  if (lc.includes('how am i doing') || lc.includes('overall') || lc.includes('score'))
-    return `Here's your snapshot, ${name}: You earn ${fmtInr(income)}/month and spend ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%). Saving ${fmtInr(saved)}/month (${savePct}%). ${savePct >= 20 ? "That's solid — above the 20% benchmark! ✅" : "Below 20% target — let's work on that."}`
-
-  if (lc.includes('cut') || lc.includes('reduc') || lc.includes('expense')) {
-    const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
+  // --- Spending / overspending ---
+  if (lc.includes('spending') || lc.includes('spent') || lc.includes('high') || lc.includes('review expense') || lc.includes('cut') || lc.includes('reduc') || lc.includes('expense') || lc.includes('trim')) {
+    const essentials = txns.filter(t => t.category === 'essentials').reduce((s, t) => s + t.amount, 0)
+    const emis = txns.filter(t => t.category === 'emis').reduce((s, t) => s + t.amount, 0)
     const limit30 = Math.round(income * 0.30)
-    return `Lifestyle spending: ${fmtInr(lifestyle)}/month. The 30% rule allows ${fmtInr(limit30)} — ${lifestyle > limit30 ? `trim ${fmtInr(lifestyle - limit30)} from dining & shopping.` : 'you\'re within the limit!'} Try cutting each category by 10%.`
+    const overBy = lifestyle - limit30
+    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${income > 0 ? Math.round((essentials/income)*100) : 0}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overBy > 0 ? ` — ₹${overBy.toLocaleString('en-IN')} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overBy > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overBy * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
   }
 
-  if (lc.includes('sip') || lc.includes('invest') || lc.includes('mutual')) {
-    const idealEq = Math.min(80, 100 - age)
-    const sipAmt = Math.round(saved * 0.8)
-    return `At age ${age}, ideal equity is ${idealEq}%. SIP plan: 60% Nifty 50 Index, 25% Mid/Small-cap, 15% International. Start ${fmtInr(sipAmt)}/month. Use ELSS for tax saving.`
+  // --- Savings ---
+  if (lc.includes('saving') || lc.includes('save') || lc.includes('improve') || lc.includes('find saving') || lc.includes('boost')) {
+    const target20 = Math.round(income * 0.20)
+    const gap = target20 - saved
+    if (gap > 0) {
+      return `${name}, you're saving ${fmtInr(saved)}/month (${savePct}%). Target: ${fmtInr(target20)} (20%).\n\nHere's how to find ${fmtInr(gap)} more:\n• Cut lifestyle by 10% → saves ${fmtInr(Math.round(lifestyle * 0.1))}\n• Review subscriptions → typically ₹500–1,500/month\n• Cook 2 more meals/week → saves ~₹2,000/month\n• Auto-transfer savings on payday so you don't spend it.`
+    }
+    return `Great news, ${name}! You're saving ${savePct}% (${fmtInr(saved)}/month) — above the 20% benchmark! 🎉\n\nNext step: Put surplus into SIPs or your emergency fund.`
   }
 
-  if (lc.includes('emergency') || lc.includes('fund')) {
+  // --- Emergency fund ---
+  if (lc.includes('emergency') || lc.includes('liquid') || lc.includes('safety net')) {
     const needed = totalExp * 6
-    return `Emergency fund target: ${fmtInr(needed)} (6 months expenses). Fill in 12 months: ${fmtInr(Math.ceil(needed / 12))}/month in a liquid fund.`
+    const monthly = Math.ceil(needed / 12)
+    return `${name}, your emergency fund target: ${fmtInr(needed)} (6 months × ${fmtInr(totalExp)} expenses).\n\nPlan:\n• Keep it in a liquid mutual fund (6–7% returns, instant withdrawal)\n• Build it in 12 months: ${fmtInr(monthly)}/month\n• Don't use FDs — liquid funds are more accessible and tax-efficient\n• This is your #1 priority before investing.`
   }
 
-  if (lc.includes('tax') || lc.includes('80c'))
-    return `Tax roadmap:\n• PPF: ₹1.5L/year → saves ₹46,800\n• ELSS: Same 80C, equity returns\n• NPS: Extra ₹50K → ₹15,600 more\nTotal: ₹62,400+ savings possible.`
-
-  if (lc.includes('insurance') || lc.includes('protect')) {
+  // --- Insurance / protection ---
+  if (lc.includes('insurance') || lc.includes('protect') || lc.includes('health insurance') || lc.includes('term') || lc.includes('cover')) {
     const termCover = monthlyIncome * 12 * 15
-    return `Insurance for age ${age}:\n• Term Life: ${fmtInr(termCover)} cover (~₹700/mo)\n• Health: ₹10L cover (~₹700/mo)\n• Budget: under 5% income = ${fmtInr(Math.round(monthlyIncome * 0.05))}/mo`
+    return `${name}, here's your insurance roadmap for age ${age}:\n\n🏥 Health Insurance:\n• Get ₹10L family floater (~₹700/mo)\n• Add super top-up for ₹50L (~₹300/mo extra)\n\n❤️ Term Life Insurance:\n• Cover: ${fmtInr(termCover)} (15× annual income)\n• Cost: ~₹700–900/month at age ${age}\n• Buy online (HDFC/ICICI/Max) — 40% cheaper\n\nTotal budget: under ${fmtInr(Math.round(monthlyIncome * 0.05))}/month (5% of income).`
   }
 
-  if (lc.includes('goal') || lc.includes('track')) {
-    if (goals.length === 0) return 'No goals set yet — head to the Plan tab to create one!'
-    const g = goals[0]
-    const pct = Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
-    return `"${g.name}" is ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)}). ${pct < 50 ? 'Consider increasing your SIP.' : 'Great progress!'}`
+  // --- SIP / investing ---
+  if (lc.includes('sip') || lc.includes('invest') || lc.includes('mutual') || lc.includes('surplus') || lc.includes('where to put')) {
+    const idealEq = Math.min(80, 100 - age)
+    const sipAmt = Math.round(saved * 0.6)
+    return `${name}, investment plan for age ${age}:\n\n📈 SIP Allocation (${fmtInr(sipAmt)}/month):\n• 60% Large-cap Index Fund (Nifty 50)\n• 25% Mid/Small-cap Fund\n• 15% International (Nasdaq/S&P 500)\n\n🎯 Equity allocation: ${idealEq}% (rule: 100 minus age)\n💰 Use ELSS for tax saving under 80C\n\nStart today — even ${fmtInr(1000)}/month compounds to ₹25L+ in 20 years.`
   }
 
-  return `${name}, your top action: ${savePct < 20 ? 'boost savings to 20% by trimming lifestyle spending.' : 'review asset allocation and insurance coverage.'}`
+  // --- Goals ---
+  if (lc.includes('goal') || lc.includes('track') || lc.includes('funded') || lc.includes('needs')) {
+    if (goals.length === 0) return `${name}, you haven't set any goals yet! Head to the Plan tab to create one. I'd recommend starting with an emergency fund and a retirement goal.`
+    const summaries = goals.slice(0, 3).map(g => {
+      const pct = Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
+      return `• "${g.name}": ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)})`
+    }).join('\n')
+    return `${name}, here's your goal progress:\n\n${summaries}\n\n${goals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
+  }
+
+  // --- Tax ---
+  if (lc.includes('tax') || lc.includes('80c') || lc.includes('deduction'))
+    return `${name}, tax saving roadmap:\n\n📋 Section 80C (₹1.5L limit):\n• PPF: ₹1.5L/year → saves ₹46,800 tax\n• ELSS: Same 80C + equity returns (3yr lock-in)\n\n📋 Section 80CCD(1B):\n• NPS: Extra ₹50K → saves ₹15,600 more\n\n📋 Section 80D:\n• Health Insurance premium: up to ₹25K\n\nTotal tax savings possible: ₹62,400+ per year.`
+
+  // --- Lifestyle ---
+  if (lc.includes('lifestyle') || lc.includes('dining') || lc.includes('shopping') || lc.includes('creep')) {
+    const limit30 = Math.round(income * 0.30)
+    return `${name}, lifestyle spending: ${fmtInr(lifestyle)}/month (${lifePct}% of income).\n\nThe 50-30-20 rule allows 30% max = ${fmtInr(limit30)}.\n\n${lifestyle > limit30 ? `You're ${fmtInr(lifestyle - limit30)} over. Try:\n• Set a weekly dining budget\n• Unsubscribe unused services\n• Use the 48-hour rule for impulse buys` : 'You\'re within the 30% limit — well done! Keep it steady.'}`
+  }
+
+  // --- How am I doing / overall ---
+  if (lc.includes('how am i doing') || lc.includes('overall') || lc.includes('score') || lc.includes('snapshot'))
+    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your SIP allocation and insurance coverage.'}`
+
+  // --- Fallback: give personalized advice based on their situation ---
+  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(Math.round(income * 0.20 - saved))} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent and review your SIP allocation.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -171,6 +203,7 @@ export default function CoachScreen() {
   const [prevTxns, setPrevTxns] = useState<Transaction[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [assets, setAssets] = useState<any>(null)
   const [insights, setInsights] = useState<any[]>([])
   const [dismissed, setDismissed] = useState<Set<number>>(new Set())
 
@@ -231,17 +264,18 @@ export default function CoachScreen() {
       const p = profileRes.data ?? null
 
       // Load assets from AsyncStorage for insights
-      let assets = null
+      let loadedAssets = null
       try {
         const raw = await AsyncStorage.getItem('@arthflow_assets')
-        if (raw) assets = JSON.parse(raw)
+        if (raw) loadedAssets = JSON.parse(raw)
       } catch {}
 
       setTxns(t)
       setPrevTxns(pt)
       setGoals(g)
       setProfile(p)
-      setInsights(generateInsights({ transactions: t, goals: g, profile: p, assets }))
+      setAssets(loadedAssets)
+      setInsights(generateInsights({ transactions: t, goals: g, profile: p, assets: loadedAssets }))
     } catch (e) {
       console.error('CoachScreen loadData error:', e)
     } finally {
@@ -253,7 +287,7 @@ export default function CoachScreen() {
   useEffect(() => { loadData() }, [loadData])
   const onRefresh = () => { setRefreshing(true); loadData() }
 
-  const sendMessage = (text?: string) => {
+  const sendMessage = async (text?: string) => {
     const msg = (text || chatInput).trim()
     if (!msg) return
     // Auto-open chat if not visible
@@ -263,15 +297,42 @@ export default function CoachScreen() {
     setTyping(true)
     animateTyping()
 
-    setTimeout(() => {
-      const reply = generateAIReply(msg, txns, goals, profile)
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
-      setTyping(false)
-      dot1.setValue(0); dot2.setValue(0); dot3.setValue(0)
-    }, 1200)
-
     // Scroll to chat section
     setTimeout(() => mainScroll.current?.scrollToEnd({ animated: true }), 300)
+
+    // Build context from real user data
+    const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+    const spent = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
+    const realIncome = income > 0 ? income : (profile?.monthly_income ?? 0)
+
+    const chatContext = {
+      profile,
+      transactions: txns,
+      goals,
+      assets,
+      monthlyFlow: {
+        income: realIncome,
+        spent,
+        saved: Math.max(0, realIncome - spent),
+        savePct: realIncome > 0 ? Math.round(((realIncome - spent) / realIncome) * 100) : 0,
+        lifestyle,
+        lifePct: realIncome > 0 ? Math.round((lifestyle / realIncome) * 100) : 0,
+      },
+    }
+
+    try {
+      const reply = await fetchAiChat(msg, chatContext)
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
+    } catch (err) {
+      console.error('AI chat error:', err)
+      // Fallback to local reply if backend fails
+      const fallback = generateAIReply(msg, txns, goals, profile)
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
+    } finally {
+      setTyping(false)
+      dot1.setValue(0); dot2.setValue(0); dot3.setValue(0)
+    }
   }
 
   const openChat = () => {
@@ -451,6 +512,49 @@ export default function CoachScreen() {
           })}
         </ScrollView>
 
+        {/* ── Risk & Protection ─── */}
+        <View style={[s.sectionRow, { marginTop: 20 }]}>
+          <Text style={s.sectionTitle}>🛡️ Risk & Protection</Text>
+        </View>
+        {[
+          { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'No policy found.', impact: 'A medical emergency can wipe out your savings in weeks.' },
+          { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: 'partial' as const, desc: '1 month covered.', impact: 'You need 6 months of expenses — currently at ~1 month.' },
+          { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'No coverage.', impact: 'Your family loses financial protection without this.' },
+          { id: 'income', label: 'Income Protection', icon: '💼', status: 'ok' as const, desc: 'PF/ESI active via employer.', impact: '' },
+        ].map(item => {
+          const isMissing = item.status === 'missing'
+          const isPartial = item.status === 'partial'
+          const isOk = item.status === 'ok'
+          const statusColor = isOk ? GREEN : isPartial ? ORANGE : RED
+          const statusLabel = isOk ? 'Covered' : isPartial ? 'Partial' : 'Missing'
+          const bgColor = isOk ? GREEN_L : isPartial ? ORANGE_L : RED_L
+          return (
+            <View key={item.id} style={[s.protCard, { borderLeftColor: statusColor }]}>
+              <View style={s.protRow}>
+                <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={s.protName}>{item.label}</Text>
+                    <View style={[s.protBadge, { backgroundColor: bgColor }]}>
+                      <Text style={[s.protBadgeLabel, { color: statusColor }]}>{statusLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.protDesc}>{item.desc}</Text>
+                </View>
+              </View>
+              {!isOk && (
+                <TouchableOpacity
+                  style={[s.protFixBtn, { backgroundColor: statusColor }]}
+                  onPress={() => sendMessage(`I need help with ${item.label}. ${item.impact} What should I do?`)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.protFixBtnText}>Get advice →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )
+        })}
+
         {/* ── Quick Ask (Collapsible Chat) ─── */}
         <View style={{ marginTop: 24 }}>
           <TouchableOpacity style={s.askToggle} onPress={() => setShowAskBar(!showAskBar)} activeOpacity={0.8}>
@@ -589,6 +693,16 @@ const s = StyleSheet.create({
   challengeBtnTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
   diffBadge: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 6, backgroundColor: BG_SEC },
   diffTxt: { fontSize: 10, fontFamily: 'Manrope_700Bold', textTransform: 'capitalize' },
+
+  // Protection cards
+  protCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER, borderLeftWidth: 3 },
+  protRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  protName: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TXT1 },
+  protBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  protBadgeLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold' },
+  protDesc: { fontSize: 12, color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  protFixBtn: { marginTop: 12, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  protFixBtnText: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
 
   // Ask toggle
   askToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: BORDER },

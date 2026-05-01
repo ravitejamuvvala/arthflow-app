@@ -22,6 +22,7 @@ type SignUpScreenProps = {
 export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const validatePassword = (pw) => {
@@ -41,13 +42,16 @@ export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreen
       );
       return;
     }
+    if (password !== confirmPassword) {
+      Alert.alert('Passwords don\'t match', 'Please make sure both passwords are identical.');
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signUp({ email, password });
     setLoading(false);
     if (error) {
       Alert.alert('Sign up error', error.message);
     } else {
-      Alert.alert('Success', 'Check your email for a confirmation link.');
       if (onSignUpSuccess) onSignUpSuccess();
     }
   };
@@ -101,6 +105,23 @@ export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreen
           >
             Password must be at least 6 characters, include 1 capital letter, 1 special character, and 1 number.
           </Text>
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={[
+              styles.input,
+              confirmPassword.length > 0 && password !== confirmPassword && { borderColor: '#EF4444' },
+            ]}
+            placeholder="Re-enter password"
+            placeholderTextColor="#9CA3AF"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="password"
+          />
+          {confirmPassword.length > 0 && password !== confirmPassword && (
+            <Text style={styles.passwordPolicyInvalid}>Passwords do not match.</Text>
+          )}
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
             onPress={handleSignUp}

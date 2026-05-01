@@ -71,7 +71,6 @@ export default function ProfileScreen() {
   const [notifications, setNotifications] = useState(true)
   const [weeklyDigest, setWeeklyDigest]   = useState(true)
   const [signingOut, setSigningOut] = useState(false)
-  const [fixingItem, setFixingItem] = useState<string | null>(null)
   const [showEdit, setShowEdit]       = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showTnC, setShowTnC]         = useState(false)
@@ -161,8 +160,6 @@ export default function ProfileScreen() {
   const expenses   = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const savings    = income - expenses
   const monthlyIncome = profile?.monthly_income ?? 0
-
-  const missingCount = PROTECTION_ITEMS.filter(p => p.status !== 'ok').length
 
   // Streak: count consecutive months with positive savings
   const getStreak = () => {
@@ -273,65 +270,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* ─── Risk & Protection ─── */}
-      <View style={st.sectionHeader}>
-        <View style={st.sectionTitleRow}>
-          <Text style={{ fontSize: 15 }}>{missingCount > 0 ? '⚠️' : '🛡️'}</Text>
-          <Text style={st.sectionTitle}>Risk & Protection</Text>
-        </View>
-        {missingCount > 0 && (
-          <View style={st.gapsBadge}>
-            <Text style={st.gapsBadgeText}>{missingCount} gaps</Text>
-          </View>
-        )}
-      </View>
-
-      {missingCount > 0 && (
-        <View style={st.riskWarning}>
-          <Text style={{ fontSize: 20 }}>⚠️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={st.riskWarningTitle}>Your financial safety has gaps</Text>
-            <Text style={st.riskWarningDesc}>Without protection, one emergency can erase months of progress.</Text>
-          </View>
-        </View>
-      )}
-
-      {PROTECTION_ITEMS.map(item => {
-        const cfg = STATUS_CFG[item.status]
-        const borderColor = item.status === 'ok' ? BORDER : item.status === 'partial' ? '#FDE68A' : '#FED7AA'
-        return (
-          <View key={item.id} style={[st.protCard, { borderColor }]}>
-            {item.status !== 'ok' && <View style={[st.protStripe, { backgroundColor: item.status === 'partial' ? ORANGE : '#F97316' }]} />}
-            <View style={st.protBody}>
-              <View style={st.protRow}>
-                <View style={[st.protIcon, { backgroundColor: cfg.bg }]}>
-                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={st.protNameRow}>
-                    <Text style={st.protName}>{item.label}</Text>
-                    <View style={[st.protBadge, { backgroundColor: cfg.bg }]}>
-                      <View style={[st.protBadgeDot, { backgroundColor: cfg.dot }]} />
-                      <Text style={[st.protBadgeLabel, { color: cfg.labelColor }]}>{cfg.label}</Text>
-                    </View>
-                  </View>
-                  <Text style={st.protDesc}>{item.desc}</Text>
-                  {item.status !== 'ok' && (
-                    <Text style={st.protImpact}>{item.impact}</Text>
-                  )}
-                </View>
-                <Text style={{ fontSize: 18 }}>{item.status === 'ok' ? '✅' : '⚠️'}</Text>
-              </View>
-              {item.status !== 'ok' && (
-                <TouchableOpacity style={st.protFixBtn} onPress={() => setFixingItem(item.id)} activeOpacity={0.85}>
-                  <Text style={st.protFixBtnText}>Fix this →</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )
-      })}
-
       {/* ─── Settings: Notifications ─── */}
       <View style={st.settingsGroup}>
         <Text style={st.settingsGroupTitle}>NOTIFICATIONS</Text>
@@ -414,42 +352,6 @@ export default function ProfileScreen() {
         <Text style={st.footerMade}>Made with ❤️ for better money habits</Text>
       </View>
       </ScrollView>
-
-      {/* ─── Fix Protection Modal ─── */}
-      <Modal visible={!!fixingItem} animationType="slide" transparent>
-        <View style={st.modalOverlay}>
-          <View style={st.modalCard}>
-            {(() => {
-              const found = PROTECTION_ITEMS.find(p => p.id === fixingItem)
-              if (!found) return null
-              return (
-                <>
-                  <View style={st.modalHeader}>
-                    <Text style={st.modalTitle}>{found.label}</Text>
-                    <TouchableOpacity onPress={() => setFixingItem(null)} style={st.modalCloseBtn}>
-                      <Text style={st.modalCloseText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={st.modalIconBox}>
-                    <Text style={{ fontSize: 40 }}>{found.icon}</Text>
-                    <Text style={st.modalImpact}>{found.impact}</Text>
-                  </View>
-                  {['Compare plans online', 'Talk to a financial advisor', 'Remind me in 1 week'].map((action, i) => (
-                    <TouchableOpacity
-                      key={action}
-                      style={[st.modalAction, i === 0 && st.modalActionPrimary]}
-                      onPress={() => setFixingItem(null)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[st.modalActionText, i === 0 && { color: '#fff' }]}>{action}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              )
-            })()}
-          </View>
-        </View>
-      </Modal>
 
       {/* ─── Edit Profile Sheet ─── */}
       <Modal visible={showEdit} animationType="slide" transparent>

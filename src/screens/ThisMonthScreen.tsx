@@ -382,22 +382,55 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         )}
       </View>
 
-      {/* ── Trend (last 3 months) ────────────────────────── */}
+      {/* ── Monthly Trend ────────────────────────────────── */}
       {snapshots.length > 1 && (
         <View style={s.card}>
-          <Text style={[s.cardTitle, { marginBottom: 12 }]}>Monthly Trend</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {snapshots.map((snap, i) => (
-              <View key={i} style={[s.trendBox, i === snapshots.length - 1 && { borderColor: BLUE + '30', backgroundColor: BLUE_L }]}>
-                <Text style={s.trendMonth}>{snap.short}</Text>
-                <Text style={[s.trendPct, { color: snap.savedPct >= 20 ? GREEN_H : ORANGE_H }]}>{snap.savedPct}%</Text>
-                <Text style={s.trendLabel}>saved</Text>
-                <View style={s.trendBarTrack}>
-                  <View style={[s.trendBarFill, { height: `${Math.min(100, Math.max(5, snap.savedPct))}%`, backgroundColor: snap.savedPct >= 20 ? GREEN : ORANGE }]} />
+          <Text style={[s.cardTitle, { marginBottom: 14 }]}>Monthly Trend</Text>
+          {snapshots.map((snap, i) => {
+            const isCurrent = i === snapshots.length - 1
+            const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
+            const savedAmt = Math.max(0, snap.income - snap.spent)
+            const prev = i > 0 ? snapshots[i - 1] : null
+            const improving = prev ? snap.savedPct > prev.savedPct : false
+            return (
+              <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
+                <View style={s.trendMonthCol}>
+                  <Text style={[s.trendMonth, isCurrent && { color: BLUE }]}>{snap.short}</Text>
+                </View>
+                <View style={s.trendContent}>
+                  <View style={s.trendBarTrack}>
+                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= 20 ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
+                  </View>
+                  <View style={s.trendStats}>
+                    <Text style={s.trendStatText}>
+                      <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
+                      <Text style={{ color: TXT3 }}> spent</Text>
+                    </Text>
+                    <Text style={[s.trendSaved, { color: snap.savedPct >= 20 ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
+                      {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
+                    </Text>
+                  </View>
                 </View>
               </View>
-            ))}
-          </View>
+            )
+          })}
+          {/* Insight */}
+          {(() => {
+            const curr = snapshots[snapshots.length - 1]
+            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null
+            if (!prev) return null
+            const diff = curr.savedPct - prev.savedPct
+            const msg = diff > 5
+              ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
+              : diff < -5
+              ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
+              : `Holding steady vs ${prev.short} — aim for 20%+ savings 🔵`
+            return (
+              <View style={s.trendInsight}>
+                <Text style={s.trendInsightText}>{msg}</Text>
+              </View>
+            )
+          })()}
         </View>
       )}
 
@@ -584,12 +617,18 @@ const s = StyleSheet.create({
   txAmount: { fontSize: 15, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
 
   // Trend
-  trendBox: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
+  trendRowCurrent: { backgroundColor: BLUE_L, borderRadius: 12, paddingHorizontal: 8, marginHorizontal: -4 },
+  trendMonthCol: { width: 32 },
   trendMonth: { fontSize: 12, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
-  trendPct: { fontSize: 20, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
-  trendLabel: { fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular' },
-  trendBarTrack: { width: 6, height: 40, borderRadius: 3, backgroundColor: BG_SEC, marginTop: 6, overflow: 'hidden', justifyContent: 'flex-end' },
-  trendBarFill: { width: 6, borderRadius: 3 },
+  trendContent: { flex: 1 },
+  trendBarTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, overflow: 'hidden', marginBottom: 4 },
+  trendBarFill: { height: 6, borderRadius: 3 },
+  trendStats: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  trendStatText: { fontSize: 12, fontFamily: 'Manrope_400Regular', color: TXT3 },
+  trendSaved: { fontSize: 11, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  trendInsight: { marginTop: 10, backgroundColor: BG_SEC, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  trendInsightText: { fontSize: 12, fontWeight: '600', color: BLUE, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
 
   // Sheets
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.65)', justifyContent: 'flex-end' },
