@@ -79,25 +79,6 @@ function totalNetWorth(a: AssetPortfolio): number {
   return Object.values(a).reduce((s, v) => s + v, 0)
 }
 
-// ─── Evaluate Protection (dynamic) ──────────────────────────────────────
-function evaluateProtection(assets: AssetPortfolio, monthlyExpenses: number) {
-  const liquid = assets.liquidCash ?? 0
-  const needed6 = monthlyExpenses * 6
-  const monthsCovered = needed6 > 0 ? Math.floor(liquid / (needed6 / 6)) : 0
-  const emergencyStatus: 'ok' | 'partial' | 'missing' = monthsCovered >= 6 ? 'ok' : monthsCovered >= 1 ? 'partial' : 'missing'
-  const emergencyDesc = monthsCovered >= 6
-    ? `${monthsCovered} months covered ✅`
-    : monthsCovered >= 1
-    ? `~${monthsCovered} month${monthsCovered > 1 ? 's' : ''} covered — need 6 months`
-    : 'No emergency fund yet'
-
-  return [
-    { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: emergencyStatus, desc: emergencyDesc },
-    { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Add via Coach to track' },
-    { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Ask Coach for a plan' },
-  ]
-}
-
 // ─── Wealth Insights (dynamic) ──────────────────────────────────────────
 function getWealthInsights(assets: AssetPortfolio, nw: number) {
   if (nw === 0) return []
@@ -147,7 +128,8 @@ export default function ProfileScreen() {
   const [editIncome, setEditIncome]   = useState('')
   const [editType, setEditType]       = useState<string>('salary')
   const [showSignOut, setShowSignOut] = useState(false)
-  const [showValues, setShowValues] = useState(false)
+  const [showIncome, setShowIncome] = useState(false)
+  const [showNetWorth, setShowNetWorth] = useState(false)
   const [activeAssetSheet, setActiveAssetSheet] = useState<keyof AssetPortfolio | null>(null)
   const [assetInputValue, setAssetInputValue] = useState('')
 
@@ -228,12 +210,8 @@ export default function ProfileScreen() {
   }
 
   const income     = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expenses   = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const monthlyIncome = profile?.monthly_income ?? 0
-  const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
   const age = profile?.age ?? 0
-  const riskLabel = age === 0 ? '—' : age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
-  const riskEmoji = age === 0 ? '📊' : age < 30 ? '🔥' : age < 40 ? '⚡' : age < 50 ? '🛡️' : '🌿'
 
   // Streak
   const getStreak = () => {
@@ -256,8 +234,6 @@ export default function ProfileScreen() {
 
   // Wealth
   const nw = totalNetWorth(assets)
-  const monthlyExp = expenses || (profile?.expenses_essentials ?? 0) + (profile?.expenses_lifestyle ?? 0) + (profile?.expenses_emis ?? 0)
-  const protectionItems = evaluateProtection(assets, monthlyExp)
   const wealthInsights = getWealthInsights(assets, nw)
   const activeCfg = ASSET_CONFIG.find(c => c.key === activeAssetSheet)
 
@@ -302,7 +278,7 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={st.heroUserName}>{userName}</Text>
               <Text style={st.heroUserSub}>
-                {profile?.income_type === 'business' ? '🏢 Business' : profile?.income_type === 'freelance' ? '👤 Freelance' : '💼 Salaried'}
+                {profile?.income_type === 'business' ? '🏢 Business' : profile?.income_type === 'freelance' ? '👤 Freelance' : '💼 Salaried'}{age > 0 ? ` · Age ${age}` : ''}
               </Text>
               <View style={st.heroMemberRow}>
                 <View style={st.heroMemberDot} />
@@ -311,87 +287,69 @@ export default function ProfileScreen() {
             </View>
           </View>
           <View style={st.heroStatsGrid}>
-            {[
-              { emoji: '💰', value: fmtInr(monthlyIncome || income), label: 'Income', sensitive: true },
-              { emoji: '🔥', value: `${streak} mo`, label: 'Streak', sensitive: false },
-              { emoji: '📈', value: `${savePct}%`, label: 'Saving', sensitive: false },
-              { emoji: riskEmoji, value: riskLabel.slice(0, 6), label: 'Risk', sensitive: false },
-            ].map(s => (
-              <View key={s.label} style={st.heroStatBox}>
-                <Text style={{ fontSize: 14 }}>{s.emoji}</Text>
-                <Text style={st.heroStatValue}>{s.sensitive && !showValues ? '••••' : s.value}</Text>
-                <Text style={st.heroStatLabel}>{s.label}</Text>
+            <TouchableOpacity style={st.heroStatBox} onPress={() => setShowIncome(!showIncome)} activeOpacity={0.7}>
+              <Text style={{ fontSize: 14 }}>💰</Text>
+              <Text style={st.heroStatValue}>{showIncome ? fmtInr(monthlyIncome || income) : '••••'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={st.heroStatLabel}>Income</Text>
+                <Text style={{ fontSize: 10 }}>{showIncome ? '🙈' : '👁️'}</Text>
               </View>
-            ))}
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowValues(!showValues)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginTop: 10, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 13 }}>{showValues ? '🙈' : '👁️'}</Text>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_700Bold' }}>{showValues ? 'Hide' : 'Show'}</Text>
-          </TouchableOpacity>
-
-          {(profile?.dob || profile?.phone || age) && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
-              {age > 0 && <Text style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular' }}>🎂 Age {age}</Text>}
-              {profile?.phone ? <Text style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular' }}>📞 {profile.phone}</Text> : null}
+            </TouchableOpacity>
+            <View style={st.heroStatBox}>
+              <Text style={{ fontSize: 14 }}>🔥</Text>
+              <Text style={st.heroStatValue}>{streak} mo</Text>
+              <Text style={st.heroStatLabel}>Streak</Text>
             </View>
-          )}
+          </View>
         </View>
       </View>
 
       {/* ─── Net Worth & Wealth ─── */}
       <View style={st.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <Text style={st.cardTitle}>Net Worth</Text>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: '#E0A820', fontFamily: 'Manrope_700Bold' }}>
-            {showValues ? fmtInr(nw) : '••••'}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <TouchableOpacity onPress={() => setShowNetWorth(!showNetWorth)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={st.cardTitle}>Net Worth</Text>
+            <Text style={{ fontSize: 10 }}>{showNetWorth ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: '#E0A820', fontFamily: 'Manrope_700Bold' }}>
+            {showNetWorth ? fmtInr(nw) : '••••'}
           </Text>
         </View>
 
         {/* Allocation bar */}
         {nw > 0 && (
-          <>
-            <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12 }}>
-              {allocSegments.map(seg => (
-                <View key={seg.label} style={{ flex: seg.value / nw, backgroundColor: seg.color, minWidth: 0 }} />
-              ))}
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-              {allocSegments.map(seg => {
-                const pct = Math.round((seg.value / nw) * 100)
-                return (
-                  <View key={seg.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: seg.color }} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_400Regular' }}>{seg.emoji} {seg.label}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{pct}%</Text>
-                  </View>
-                )
-              })}
-            </View>
-          </>
+          <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
+            {allocSegments.map(seg => (
+              <View key={seg.label} style={{ flex: seg.value / nw, backgroundColor: seg.color, minWidth: 2 }} />
+            ))}
+          </View>
         )}
 
-        {/* Asset grid */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+        {/* Asset visual cards */}
+        <View style={{ gap: 8 }}>
           {ASSET_CONFIG.map(cfg => {
             const val = assets[cfg.key]
+            const pct = nw > 0 ? Math.round((val / nw) * 100) : 0
             return (
               <TouchableOpacity
                 key={cfg.key}
                 onPress={() => { setActiveAssetSheet(cfg.key); setAssetInputValue(val > 0 ? String(val) : '') }}
-                style={[st.assetChip, { borderColor: val > 0 ? cfg.color + '30' : BORDER }]}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: val > 0 ? cfg.bg : BG_SEC }}
                 activeOpacity={0.7}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: val > 0 ? cfg.color + '18' : BORDER, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 18 }}>{cfg.emoji}</Text>
                 </View>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold', marginTop: 4 }}>
-                  {showValues ? (val > 0 ? fmtInr(val) : '₹0') : '••••'}
-                </Text>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
+                  <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{cfg.subLabel}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold' }}>
+                    {showNetWorth ? (val > 0 ? fmtInr(val) : '₹0') : '••••'}
+                  </Text>
+                  {val > 0 && nw > 0 && <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{pct}%</Text>}
+                </View>
               </TouchableOpacity>
             )
           })}
@@ -408,30 +366,6 @@ export default function ProfileScreen() {
             ))}
           </View>
         )}
-      </View>
-
-      {/* ─── Protection Status ─── */}
-      <View style={st.card}>
-        <Text style={[st.cardTitle, { marginBottom: 12 }]}>🛡️ Protection Status</Text>
-        {protectionItems.map(item => {
-          const isOk = item.status === 'ok'
-          const isPartial = item.status === 'partial'
-          const statusColor = isOk ? GREEN : isPartial ? ORANGE : RED
-          const statusLabel = isOk ? 'Covered' : isPartial ? 'Partial' : 'Missing'
-          const bgColor = isOk ? GREEN_L : isPartial ? ORANGE_L : '#FEE2E2'
-          return (
-            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: item.id === 'emergency' ? 0 : 1, borderTopColor: BG_SEC }}>
-              <Text style={{ fontSize: 18 }}>{item.icon}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{item.desc}</Text>
-              </View>
-              <View style={{ borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: bgColor }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: statusColor, fontFamily: 'Manrope_700Bold' }}>{statusLabel}</Text>
-              </View>
-            </View>
-          )
-        })}
       </View>
 
       {/* ─── Settings: Notifications ─── */}

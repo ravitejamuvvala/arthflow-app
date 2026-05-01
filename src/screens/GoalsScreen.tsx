@@ -354,12 +354,8 @@ export default function GoalsScreen() {
                 <View style={{ padding: 16 }}>
                   {/* Header row */}
                   <View style={styles.goalHeader}>
-                    <View style={{ position: 'relative', width: 64, height: 64 }}>
-                      <GoalArc progress={pct} color={goalColor} size={64} strokeWidth={6} />
-                      <View style={styles.goalArcOverlay}>
-                        <Text style={[styles.goalArcPct, { color: goalColor }]}>{Math.round(pct)}%</Text>
-                        <Text style={{ fontSize: 14 }}>{emoji}</Text>
-                      </View>
+                    <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: goalColor + '15', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 24 }}>{emoji}</Text>
                     </View>
 
                     <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
@@ -375,7 +371,7 @@ export default function GoalsScreen() {
                         })()}
                       </View>
                       <Text style={styles.goalAmounts}>
-                        {formatINR(goal.saved_amount)} <Text style={{ color: TXT3 }}>of</Text> {formatINR(goal.target_amount)}
+                        {formatINR(goal.target_amount)}
                       </Text>
                       <Text style={styles.goalYears}>
                         {yearsLeft > 0 ? `${yearsLeft} yrs left · by ${targetYear}` : `Target: ${targetYear}`}

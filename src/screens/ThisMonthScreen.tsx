@@ -105,7 +105,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   // AI Report
   const [aiReport, setAiReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set())
 
   // Expense sheet
   const [showExpSheet, setShowExpSheet] = useState(false)
@@ -199,7 +198,14 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       const report = await fetchAiReport({
         profile: p,
         transactions: txs,
-        goals: g,
+        goals: g.map(goal => {
+          const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
+          const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
+          const monthsLeft = yearsLeft * 12
+          const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
+          const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
+          return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
+        }),
         assets: assetData,
         monthlyFlow: {
           income,
@@ -424,9 +430,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </View>
       )}
 
-      {/* ── AI Financial Report (expandable sections) ──── */}
+      {/* ── AI Financial Report (compact dashboard) ──── */}
       {(reportLoading || aiReport) && (
-        <View style={s.reportCard}>
+        <TouchableOpacity
+          style={s.reportCard}
+          onPress={() => onNavigateCoach?.()}
+          activeOpacity={0.85}
+        >
           <View style={s.reportHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
               <Text style={{ fontSize: 16 }}>🤖</Text>
@@ -438,7 +448,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               }]}>
                 <Text style={[s.reportScoreText, {
                   color: aiReport.score >= 80 ? GREEN_H : aiReport.score >= 60 ? ORANGE_H : aiReport.score >= 40 ? ORANGE_H : RED
-                }]}>{aiReport.score}/100 · {aiReport.scoreLabel}</Text>
+                }]}>{aiReport.score}/100</Text>
               </View>
             )}
           </View>
@@ -452,40 +462,23 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
             <>
               <Text style={s.reportSummary}>{aiReport.summary}</Text>
 
-              {/* Each section is individually expandable */}
-              {aiReport.sections?.map((sec: any, i: number) => {
-                const isOpen = expandedSections.has(i)
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={[s.reportSection, isOpen && s.reportSectionOpen]}
-                    onPress={() => setExpandedSections(prev => {
-                      const next = new Set(prev)
-                      if (next.has(i)) next.delete(i)
-                      else next.add(i)
-                      return next
-                    })}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                        <Text style={{ fontSize: 16 }}>{sec.icon}</Text>
-                        <Text style={s.reportSectionTitle}>{sec.title}</Text>
-                      </View>
-                      <Text style={{ fontSize: 12, color: BLUE }}>{isOpen ? '▲' : '▼'}</Text>
-                    </View>
-                    {isOpen && sec.items?.map((item: string, j: number) => (
-                      <View key={j} style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingLeft: 28 }}>
-                        <Text style={{ fontSize: 11, color: BLUE, marginTop: 2 }}>•</Text>
-                        <Text style={s.reportItem}>{item}</Text>
-                      </View>
-                    ))}
-                  </TouchableOpacity>
-                )
-              })}
+              {/* Section pills - compact overview */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {aiReport.sections?.map((sec: any, i: number) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BG_SEC, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+                    <Text style={{ fontSize: 13 }}>{sec.icon}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{sec.title}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>View Full Report</Text>
+                <Text style={{ fontSize: 14, color: BLUE }}>→</Text>
+              </View>
             </>
           ) : null}
-        </View>
+        </TouchableOpacity>
       )}
 
       {/* ── Blueprint (compact) ──────────────────────────── */}
@@ -534,86 +527,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           )
         })}
       </View>
-
-      {/* ── Assets & Returns ─────────────────────────────── */}
-      {assets && (() => {
-        const ASSET_LABELS: Record<string, { label: string; emoji: string; color: string }> = {
-          liquidCash: { label: 'Cash & Savings', emoji: '💵', color: GREEN },
-          mutualFunds: { label: 'Mutual Funds', emoji: '📈', color: BLUE },
-          stocks: { label: 'Stocks', emoji: '📊', color: '#6366F1' },
-          epf: { label: 'EPF / PF', emoji: '🏦', color: TEAL },
-          ppf: { label: 'PPF', emoji: '🔒', color: '#8B5CF6' },
-          gold: { label: 'Gold', emoji: '🥇', color: ORANGE },
-          realEstate: { label: 'Real Estate', emoji: '🏠', color: RED },
-          other: { label: 'Other', emoji: '🔧', color: TXT2 },
-        }
-        const nw = Object.values(assets as Record<string, number>).reduce((s: number, v: number) => s + (v || 0), 0)
-        const activeAssets = Object.entries(assets as Record<string, number>)
-          .filter(([_, v]) => v > 0)
-          .sort(([_a, a], [_b, b]) => b - a)
-        if (activeAssets.length === 0) return null
-
-        const adviceMap: Record<string, { suggestion: string }> = {}
-        aiReport?.assetAdvice?.forEach((a: any) => {
-          const key = Object.keys(ASSET_LABELS).find(k => ASSET_LABELS[k].label.toLowerCase().includes(a.asset?.toLowerCase()) || a.asset?.toLowerCase().includes(k.toLowerCase()))
-          if (key) adviceMap[key] = a
-        })
-
-        return (
-          <View style={s.card}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={s.cardTitle}>Assets & Allocation</Text>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#E0A820', fontFamily: 'Manrope_700Bold' }}>{fmtInr(nw)}</Text>
-            </View>
-            {/* Allocation bar */}
-            <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 12 }}>
-              {activeAssets.map(([key, val]) => (
-                <View key={key} style={{ flex: val / nw, backgroundColor: ASSET_LABELS[key]?.color || TXT3, minWidth: 1 }} />
-              ))}
-            </View>
-            {activeAssets.map(([key, val]) => {
-              const cfg = ASSET_LABELS[key]
-              if (!cfg) return null
-              const pct = nw > 0 ? Math.round((val / nw) * 100) : 0
-              const advice = adviceMap[key]
-              return (
-                <View key={key} style={{ marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: BG_SEC }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
-                      <View>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: cfg.color, fontFamily: 'Manrope_700Bold' }}>{fmtInr(val)}</Text>
-                      <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{pct}% of portfolio</Text>
-                    </View>
-                  </View>
-                  {advice?.suggestion && (
-                    <View style={{ marginTop: 6, paddingLeft: 28, flexDirection: 'row', gap: 4 }}>
-                      <Text style={{ fontSize: 11, color: BLUE }}>💡</Text>
-                      <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular', flex: 1, lineHeight: 17 }}>{advice.suggestion}</Text>
-                    </View>
-                  )}
-                </View>
-              )
-            })}
-          </View>
-        )
-      })()}
-
-      {/* ── AI Coach CTA ─────────────────────────────────── */}
-      <TouchableOpacity style={s.coachCard} onPress={onNavigateCoach} activeOpacity={0.85}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={s.coachIcon}><Text style={{ fontSize: 20 }}>💬</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.coachTitle}>Ask AI Coach</Text>
-            <Text style={s.coachSub}>Get personalized advice on savings, investments, insurance & more</Text>
-          </View>
-          <Text style={{ fontSize: 16, color: BLUE }}>›</Text>
-        </View>
-      </TouchableOpacity>
 
       {/* ── Expenses by Category ─────────────────────────── */}
       <View style={s.card}>
@@ -818,24 +731,10 @@ const s = StyleSheet.create({
   reportScoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   reportScoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   reportSummary: { fontSize: 14, color: TXT1, lineHeight: 21, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
-  reportSection: { marginBottom: 4, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: BG_SEC },
-  reportSectionOpen: { backgroundColor: BLUE_L, marginBottom: 8 },
-  reportSectionTitle: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  reportItem: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular', flex: 1 },
-  reportToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
-  reportToggleText: { fontSize: 13, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' },
-  reportCoachBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, paddingVertical: 12, marginTop: 8, backgroundColor: BLUE_L },
-  reportCoachText: { fontSize: 13, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' },
 
   // Insight chips
   insightChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: BORDER, maxWidth: 260 },
   insightChipText: { fontSize: 12, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold', lineHeight: 17, flexShrink: 1 },
-
-  // Coach CTA
-  coachCard: { backgroundColor: BLUE_L, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '30' },
-  coachIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  coachTitle: { fontSize: 15, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
-  coachSub: { fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular', marginTop: 2 },
 
   // Card
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },

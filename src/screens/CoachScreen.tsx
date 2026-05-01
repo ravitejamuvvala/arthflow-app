@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
-import { fetchAiChat } from '../lib/api'
+import { fetchAiChat, fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr } from '../utils/calculations'
@@ -132,7 +132,7 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
 // ═════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
-export default function CoachScreen() {
+export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [txns, setTxns] = useState<Transaction[]>([])
@@ -140,7 +140,7 @@ export default function CoachScreen() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [assets, setAssets] = useState<any>(null)
   const [engineResult, setEngineResult] = useState<any>(null)
-  const [dismissed, setDismissed] = useState<Set<number>>(new Set())
+  const [aiReport, setAiReport] = useState<any>(null)
 
   // Chat
   const [messages, setMessages] = useState([
@@ -201,6 +201,57 @@ export default function CoachScreen() {
       const baseIncome = p?.monthly_income ?? t.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
       const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 0, profile: p })
       setEngineResult(result)
+
+      // Load AI report from cache, or fetch fresh if missing/stale
+      let reportLoaded = false
+      try {
+        const raw = await AsyncStorage.getItem('@arthflow_ai_report')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+            setAiReport(parsed.report)
+            reportLoaded = true
+          }
+        }
+      } catch {}
+
+      // If no cached report, fetch fresh
+      if (!reportLoaded && p) {
+        try {
+          const income = baseIncome || p?.monthly_income || 0
+          const spent = t.filter((tx: Transaction) => tx.type === 'expense').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const lifestyle = t.filter((tx: Transaction) => tx.category === 'lifestyle').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const essentials = t.filter((tx: Transaction) => tx.category === 'essentials').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const emis = t.filter((tx: Transaction) => tx.category === 'emis').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const report = await fetchAiReport({
+            profile: p,
+            transactions: t,
+            goals: g.map((goal: Goal) => {
+              const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
+              const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
+              const monthsLeft = yearsLeft * 12
+              const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
+              const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
+              return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
+            }),
+            assets: loadedAssets,
+            monthlyFlow: {
+              income,
+              spent,
+              saved: Math.max(0, income - spent),
+              savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
+              lifestyle,
+              lifePct: income > 0 ? Math.round((lifestyle / income) * 100) : 0,
+              essentials,
+              emis,
+            },
+          })
+          setAiReport(report)
+          await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
+        } catch (e) {
+          console.error('CoachScreen AI report fetch error:', e)
+        }
+      }
     } catch (e) {
       console.error('CoachScreen loadData error:', e)
     } finally {
@@ -210,7 +261,11 @@ export default function CoachScreen() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
-  const onRefresh = () => { setRefreshing(true); loadData() }
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await AsyncStorage.removeItem('@arthflow_ai_report')
+    loadData()
+  }
 
   const sendMessage = async (text?: string) => {
     const msg = (text || chatInput).trim()
@@ -294,9 +349,6 @@ export default function CoachScreen() {
       dot1.setValue(0); dot2.setValue(0); dot3.setValue(0)
     }
   }
-
-  const dismiss = (idx: number) => setDismissed(prev => new Set(prev).add(idx))
-  const activeInsights = (engineResult?.insights ?? []).filter((_: any, i: number) => !dismissed.has(i))
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={BLUE} /></View>
@@ -391,38 +443,111 @@ export default function CoachScreen() {
           </View>
         </View>
 
-        {/* ── Top Insights (max 2) ─── */}
-        {activeInsights.length > 0 && (
-          <>
-            <View style={s.sectionRow}>
-              <Text style={s.sectionTitle}>🎯 Top Insights</Text>
-              <View style={s.countBadge}><Text style={s.countTxt}>{activeInsights.length}</Text></View>
-            </View>
-            {activeInsights.slice(0, 2).map((ins: any, i: number) => {
-              const isWarning = ins.type === 'warning' || ins.type === 'risk'
-              const cardBg = isWarning ? '#FFF7ED' : '#F0FDF4'
-              const accent = isWarning ? ORANGE : GREEN
-              return (
-                <View key={i} style={[s.nudgeCard, { backgroundColor: cardBg, borderLeftColor: accent }]}>
-                  <View style={s.nudgeTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.nudgeTitle}>{ins.title}</Text>
-                      <Text style={s.nudgeMsg}>{ins.message}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => dismiss(i)} style={s.dismissBtn}>
-                      <Text style={{ fontSize: 10, color: TXT3 }}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {ins.action && (
-                    <TouchableOpacity style={[s.nudgeCta, { backgroundColor: accent }]} activeOpacity={0.85}
-                      onPress={() => sendMessage(`${ins.title}: ${ins.message}. What should I do?`)}>
-                      <Text style={s.nudgeCtaTxt}>{ins.action}</Text>
-                    </TouchableOpacity>
-                  )}
+        {/* ── AI Financial Report Dashboard ─── */}
+        {aiReport && (
+          <View>
+            {/* Score Card */}
+            <View style={s.dashCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 18 }}>🤖</Text>
+                  <Text style={s.dashTitle}>Financial Health</Text>
                 </View>
-              )
-            })}
-          </>
+                <View style={[s.scoreBadge, {
+                  backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED) + '18'
+                }]}>
+                  <Text style={[s.scoreText, {
+                    color: aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED
+                  }]}>{aiReport.score}/100 · {aiReport.scoreLabel}</Text>
+                </View>
+              </View>
+              <Text style={s.dashSummary}>{aiReport.summary}</Text>
+            </View>
+
+            {/* Each section as its own card */}
+            {aiReport.sections?.map((sec: any, i: number) => (
+              <View key={i} style={s.sectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={s.sectionIconWrap}>
+                    <Text style={{ fontSize: 18 }}>{sec.icon}</Text>
+                  </View>
+                  <Text style={s.sectionCardTitle}>{sec.title}</Text>
+                </View>
+                {sec.items?.map((item: string, j: number) => (
+                  <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
+                    <Text style={s.sectionItemText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+
+            {/* Protection Checklist Card */}
+            {aiReport.protectionChecklist?.length > 0 && (
+              <View style={s.protectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Text style={{ fontSize: 18 }}>🛡️</Text>
+                  </View>
+                  <View>
+                    <Text style={s.sectionCardTitle}>Protection Checklist</Text>
+                    <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+                  </View>
+                </View>
+                {aiReport.protectionChecklist.map((p: any, i: number) => {
+                  const statusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
+                  const statusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
+                  const statusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
+                  return (
+                    <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        <Text style={{ fontSize: 16 }}>{p.icon}</Text>
+                        <Text style={s.protectionName}>{p.item}</Text>
+                        <View style={[s.protectionBadge, { backgroundColor: statusBg }]}>
+                          <Text style={[s.protectionBadgeTxt, { color: statusColor }]}>{statusLabel}</Text>
+                        </View>
+                      </View>
+                      <View style={{ paddingLeft: 30 }}>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Have</Text>
+                          <Text style={s.protectionValue}>{p.have}</Text>
+                        </View>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Need</Text>
+                          <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
+                        </View>
+                        {p.action && (
+                          <View style={[s.protectionAction, { backgroundColor: statusBg }]}>
+                            <Text style={{ fontSize: 12, color: statusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+            )}
+
+            {/* Asset Recommendations */}
+            {aiReport.assetAdvice?.length > 0 && (
+              <View style={s.sectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={[s.sectionIconWrap, { backgroundColor: TEAL_L }]}>
+                    <Text style={{ fontSize: 18 }}>📊</Text>
+                  </View>
+                  <Text style={s.sectionCardTitle}>Asset Recommendations</Text>
+                </View>
+                {aiReport.assetAdvice.map((a: any, i: number) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: 11, color: TEAL, marginTop: 2 }}>→</Text>
+                    <Text style={{ fontSize: 13, color: TXT2, fontFamily: 'Manrope_400Regular', flex: 1, lineHeight: 19 }}>
+                      <Text style={{ fontWeight: '700', color: TXT1 }}>{a.asset}: </Text>{a.suggestion}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
         )}
 
         {/* ── AI Chat (always visible) ─── */}
@@ -530,14 +655,29 @@ const s = StyleSheet.create({
   countBadge: { backgroundColor: ORANGE_L, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   countTxt: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: ORANGE },
 
-  // Nudge cards
-  nudgeCard: { borderLeftWidth: 3, borderRadius: 16, padding: 16, marginBottom: 10 },
-  nudgeTop: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  nudgeTitle: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TXT1, marginBottom: 4 },
-  nudgeMsg: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
-  dismissBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center' },
-  nudgeCta: { marginTop: 12, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  nudgeCtaTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
+  // AI Report Dashboard
+  dashCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: BLUE + '20', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  dashTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  dashSummary: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
+  scoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  scoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+
+  // Section cards
+  sectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER },
+  sectionIconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: BLUE_L, alignItems: 'center', justifyContent: 'center' },
+  sectionCardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sectionItemText: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
+
+  // Protection checklist
+  protectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
+  protectionRow: { paddingVertical: 12 },
+  protectionName: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  protectionBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  protectionBadgeTxt: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  protectionDetail: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  protectionLabel: { fontSize: 11, color: TXT3, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', width: 40 },
+  protectionValue: { fontSize: 13, color: TXT1, fontFamily: 'Manrope_400Regular', flex: 1 },
+  protectionAction: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
 
   // Chat
   chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderRadius: 16, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, padding: 16, borderWidth: 1, borderBottomWidth: 0, borderColor: BORDER },
