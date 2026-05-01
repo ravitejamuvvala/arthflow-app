@@ -115,7 +115,7 @@ export default function GoalsScreen() {
   const [showSheet, setShowSheet] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
   const [editGoal, setEditGoal] = useState<Goal | null>(null)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  // expandedId removed — no more projection scenarios on this screen
 
   // Form state
   const [fEmoji, setFEmoji] = useState('🎯')
@@ -318,7 +318,6 @@ export default function GoalsScreen() {
             const proj = needsSetup ? null : buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
             const onTrack = proj?.canAchieve ?? false
             const goalColor = needsSetup ? ORANGE : (onTrack ? BLUE : ORANGE)
-            const isExpanded = expandedId === goal.id
             const emoji = goalEmoji(goal.name)
 
             // Goal needs setup — show a simple setup prompt card
@@ -388,86 +387,12 @@ export default function GoalsScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* SIP row */}
+                  {/* Monthly needed */}
                   {proj && (
                   <View style={styles.sipRow}>
                     <Text style={{ fontSize: 14, color: goalColor }}>📈</Text>
-                    <Text style={styles.sipText}>Monthly needed: {formatINR(proj.simpleNeeded)}/mo</Text>
-                    <Text style={[styles.sipStatus, { color: onTrack ? GREEN_H : ORANGE_H }]}>
-                      {onTrack ? 'On track ✓' : 'Needs ↑'}
-                    </Text>
+                    <Text style={styles.sipText}>Save {formatINR(proj.simpleNeeded)}/mo to reach goal</Text>
                   </View>
-                  )}
-
-                  {/* Projection toggle */}
-                  {proj && (
-                  <TouchableOpacity style={[styles.projToggle, isExpanded && styles.projToggleActive]}
-                    onPress={() => setExpandedId(isExpanded ? null : goal.id)} activeOpacity={0.7}>
-                    <Text style={{ fontSize: 13 }}>✨</Text>
-                    <Text style={[styles.projToggleText, isExpanded && { color: '#fff' }]}>
-                      {isExpanded ? 'Hide' : 'Show'} Return Scenarios
-                    </Text>
-                    <Text style={{ fontSize: 12, color: isExpanded ? '#fff' : TEAL }}>
-                      {isExpanded ? '▲' : '▼'}
-                    </Text>
-                  </TouchableOpacity>
-                  )}
-
-                  {/* Return Scenarios (expanded) */}
-                  {isExpanded && proj && (
-                    <View style={{ marginTop: 12, gap: 8 }}>
-                      {/* Info box */}
-                      <View style={styles.infoBox}>
-                        <Text style={{ fontSize: 11, color: BLUE, marginTop: 1 }}>ℹ</Text>
-                        <Text style={styles.infoText}>
-                          To reach {formatINR(goal.target_amount)} by {targetYear} ({proj.yearsLeft} yrs), see how much you need at different return rates.
-                        </Text>
-                      </View>
-
-                      {/* Scenario cards */}
-                      {proj.scenarios.map(s => {
-                        const enough = s.projected >= goal.target_amount * 0.9
-                        const diff = s.projected - goal.target_amount
-                        return (
-                          <View key={s.label} style={[styles.scenarioCard, { borderColor: s.color + '30' }]}>
-                            <View style={[styles.scenarioHeader, { backgroundColor: s.color + '12' }]}>
-                              <Text style={{ fontSize: 15 }}>{s.emoji}</Text>
-                              <View style={{ flex: 1, marginLeft: 8 }}>
-                                <Text style={[styles.scenarioTitle, { color: s.color }]}>{s.label} · {s.returnPct}% p.a.</Text>
-                                <Text style={styles.scenarioRisk}>{s.riskLabel}</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.scenarioNeedLabel}>Need/month</Text>
-                                <Text style={[styles.scenarioNeedVal, { color: s.color }]}>{formatINR(s.monthlyNeeded)}</Text>
-                              </View>
-                            </View>
-                            <View style={styles.scenarioBody}>
-                              <View>
-                                <Text style={styles.scenarioBodyLabel}>₹{formatINR(monthlySIP)}/mo projects to</Text>
-                                <Text style={[styles.scenarioBodyVal, { color: enough ? GREEN_H : ORANGE_H }]}>
-                                  {formatINR(s.projected)}
-                                </Text>
-                              </View>
-                              <View style={[styles.scenarioResultBadge, { backgroundColor: enough ? GREEN_L : ORANGE_L }]}>
-                                <Text style={[styles.scenarioResultText, { color: enough ? GREEN_H : ORANGE_H }]}>
-                                  {enough ? `+${formatINR(diff)} surplus ✓` : `${formatINR(Math.abs(diff))} short`}
-                                </Text>
-                              </View>
-                            </View>
-                            <View style={styles.scenarioAssets}>
-                              <Text style={styles.scenarioAssetsText}>Example: {s.assets}</Text>
-                            </View>
-                          </View>
-                        )
-                      })}
-
-                      {/* SEBI Disclaimer */}
-                      <View style={styles.sebiBox}>
-                        <Text style={styles.sebiText}>
-                          ⚠️ Illustrative projections only. Returns shown are hypothetical and not guaranteed. Past performance is not indicative of future results. ArthFlow does not recommend specific investment products. Consult a SEBI-registered investment advisor (RIA) for personalised advice.
-                        </Text>
-                      </View>
-                    </View>
                   )}
                 </View>
               </View>
@@ -521,14 +446,6 @@ export default function GoalsScreen() {
                   keyboardType="numeric" style={styles.currencyInput} />
               </View>
 
-              {/* Already Saved */}
-              <Text style={styles.formLabel}>ALREADY SAVED</Text>
-              <View style={styles.currencyRow}>
-                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
-                <TextInput value={fSaved} onChangeText={setFSaved} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
-              </View>
-
               {/* Target Year */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <Text style={styles.formLabel}>TARGET YEAR</Text>
@@ -565,14 +482,6 @@ export default function GoalsScreen() {
                     style={{ fontSize: 18, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold', textAlign: 'center', minWidth: 52, padding: 0 }}
                   />
                 </View>
-              </View>
-
-              {/* Monthly SIP */}
-              <Text style={styles.formLabel}>MONTHLY SIP / CONTRIBUTION</Text>
-              <View style={styles.currencyRow}>
-                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
-                <TextInput value={fMonthly} onChangeText={setFMonthly} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
               </View>
 
               {/* Priority */}

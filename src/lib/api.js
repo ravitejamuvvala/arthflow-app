@@ -64,3 +64,31 @@ export async function fetchAiChat(message, context) {
   const data = await res.json()
   return data.reply
 }
+
+export async function fetchAiReport(payload) {
+  const headers = await getAuthHeader()
+
+  let res
+  try {
+    res = await fetch(`${CONFIG.BACKEND_URL}/insights/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(payload),
+    })
+  } catch (err) {
+    console.error('Network error fetching AI report:', err)
+    throw new Error('Network error: ' + err.message)
+  }
+
+  if (!res.ok) {
+    let msg = 'AI report failed'
+    try {
+      const errData = await res.json()
+      msg += ': ' + (errData.details || errData.error || JSON.stringify(errData))
+    } catch {}
+    throw new Error(msg)
+  }
+
+  const data = await res.json()
+  return data.report
+}

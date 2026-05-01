@@ -44,6 +44,11 @@ export default function App() {
         setSession(session)
       }
       setAuthLoading(false)
+    }).catch(() => {
+      // Session storage is corrupted or refresh token invalid
+      supabase.auth.signOut()
+      setSession(null)
+      setAuthLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

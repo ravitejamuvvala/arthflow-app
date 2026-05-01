@@ -93,8 +93,8 @@ function evaluateProtection(assets: AssetPortfolio, monthlyExpenses: number) {
 
   return [
     { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: emergencyStatus, desc: emergencyDesc },
-    { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Not tracked yet' },
-    { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Not tracked yet' },
+    { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Add via Coach to track' },
+    { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Ask Coach for a plan' },
   ]
 }
 
@@ -156,7 +156,6 @@ export default function ProfileScreen() {
     if (!user) return
 
     setUserEmail(user.email ?? '')
-    setUserName(user.email?.split('@')[0] ?? 'User')
 
     const startOfMonth = new Date()
     startOfMonth.setDate(1)
@@ -177,7 +176,9 @@ export default function ProfileScreen() {
     setTransactions(txResult.data ?? [])
     setAllTransactions(allTxResult.data ?? [])
     setGoals(goalsResult.data ?? [])
-    setProfile(profileResult.data ?? null)
+    const p = profileResult.data ?? null
+    setProfile(p)
+    setUserName(p?.full_name || user.email?.split('@')[0] || 'User')
 
     // Load assets from AsyncStorage
     try {
@@ -230,9 +231,9 @@ export default function ProfileScreen() {
   const expenses   = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const monthlyIncome = profile?.monthly_income ?? 0
   const savePct = income > 0 ? Math.max(0, Math.round(((income - expenses) / income) * 100)) : 0
-  const age = profile?.age ?? 28
-  const riskLabel = age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
-  const riskEmoji = age < 30 ? '🔥' : age < 40 ? '⚡' : age < 50 ? '🛡️' : '🌿'
+  const age = profile?.age ?? 0
+  const riskLabel = age === 0 ? '—' : age < 30 ? 'Aggressive' : age < 40 ? 'Balanced' : age < 50 ? 'Moderate' : 'Conservative'
+  const riskEmoji = age === 0 ? '📊' : age < 30 ? '🔥' : age < 40 ? '⚡' : age < 50 ? '🛡️' : '🌿'
 
   // Streak
   const getStreak = () => {

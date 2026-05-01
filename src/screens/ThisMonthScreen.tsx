@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import { fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
@@ -101,6 +102,11 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   const [assets, setAssets] = useState<any>(null)
   const [engineResult, setEngineResult] = useState<any>(null)
 
+  // AI Report
+  const [aiReport, setAiReport] = useState<any>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set())
+
   // Expense sheet
   const [showExpSheet, setShowExpSheet] = useState(false)
   const [editItem, setEditItem] = useState<Transaction | null>(null)
@@ -139,7 +145,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
     setTransactions(txs)
     setGoals(g)
     setUserName(p?.full_name || user.email?.split('@')[0] || 'there')
-    setUserAge(p?.age ?? 28)
+    setUserAge(p?.age ?? 0)
 
     // Load assets from AsyncStorage
     let assetData = null
@@ -161,16 +167,68 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       transactions: thisMonthTx,
       goals: g,
       assets: assetData,
-      age: p?.age ?? 28,
+      age: p?.age ?? 0,
       profile: p,
     })
     setEngineResult(result)
     setLoading(false)
+
+    // Fetch AI report in background (only if user has some data)
+    if (baseIncome > 0 || thisMonthTx.length > 0) {
+      loadAiReport(p, thisMonthTx, g, assetData, result.flow)
+    }
   }, [incomeOverride])
+
+  const loadAiReport = async (p: any, txs: Transaction[], g: Goal[], assetData: any, flow: any) => {
+    setReportLoading(true)
+    try {
+      const cached = await AsyncStorage.getItem('@arthflow_ai_report')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        // Use cache if less than 6 hours old
+        if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+          setAiReport(parsed.report)
+          setReportLoading(false)
+          return
+        }
+      }
+    } catch {}
+    try {
+      const income = flow?.income ?? p?.monthly_income ?? 0
+      const spent = flow?.totalSpent ?? 0
+      const report = await fetchAiReport({
+        profile: p,
+        transactions: txs,
+        goals: g,
+        assets: assetData,
+        monthlyFlow: {
+          income,
+          spent,
+          saved: Math.max(0, income - spent),
+          savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
+          lifestyle: flow?.catTotals?.lifestyle ?? 0,
+          lifePct: income > 0 ? Math.round(((flow?.catTotals?.lifestyle ?? 0) / income) * 100) : 0,
+          essentials: flow?.catTotals?.essentials ?? 0,
+          emis: flow?.catTotals?.emis ?? 0,
+        },
+      })
+      setAiReport(report)
+      await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
+    } catch (e) {
+      console.error('AI report error:', e)
+    } finally {
+      setReportLoading(false)
+    }
+  }
 
   useEffect(() => { fetchData() }, [fetchData])
   useEffect(() => { if (refreshTrigger && refreshTrigger > 0) fetchData() }, [refreshTrigger])
-  const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false) }
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await AsyncStorage.removeItem('@arthflow_ai_report')
+    await fetchData()
+    setRefreshing(false)
+  }
 
   const firstName = userName.split(' ')[0]
   const greeting = () => {
@@ -288,6 +346,18 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </View>
       </View>
 
+      {/* ── Top Insights Ticker ────────────────────────── */}
+      {aiReport?.topInsights?.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14, marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}>
+          {aiReport.topInsights.map((insight: string, i: number) => (
+            <View key={i} style={s.insightChip}>
+              <Text style={{ fontSize: 12 }}>{i === 0 ? '🔥' : i === 1 ? '💡' : '📌'}</Text>
+              <Text style={s.insightChipText} numberOfLines={2}>{insight}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
       {/* ── Problem Card (only if there IS a problem) ────── */}
       {topProblem && (
         <View style={s.problemCard}>
@@ -305,6 +375,119 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </View>
       )}
 
+      {/* ── Monthly Trend ────────────────────────────────── */}
+      {snapshots.length > 1 && (
+        <View style={s.card}>
+          <Text style={[s.cardTitle, { marginBottom: 14 }]}>Monthly Trend</Text>
+          {snapshots.map((snap, i) => {
+            const isCurrent = i === snapshots.length - 1
+            const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
+            const prev = i > 0 ? snapshots[i - 1] : null
+            return (
+              <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
+                <View style={s.trendMonthCol}>
+                  <Text style={[s.trendMonth, isCurrent && { color: BLUE }]}>{snap.short}</Text>
+                </View>
+                <View style={s.trendContent}>
+                  <View style={s.trendBarTrack}>
+                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= 20 ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
+                  </View>
+                  <View style={s.trendStats}>
+                    <Text style={s.trendStatText}>
+                      <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
+                      <Text style={{ color: TXT3 }}> spent</Text>
+                    </Text>
+                    <Text style={[s.trendSaved, { color: snap.savedPct >= 20 ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
+                      {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )
+          })}
+          {(() => {
+            const curr = snapshots[snapshots.length - 1]
+            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null
+            if (!prev) return null
+            const diff = curr.savedPct - prev.savedPct
+            const msg = diff > 5
+              ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
+              : diff < -5
+              ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
+              : `Holding steady vs ${prev.short} — aim for 20%+ savings 🔵`
+            return (
+              <View style={s.trendInsight}>
+                <Text style={s.trendInsightText}>{msg}</Text>
+              </View>
+            )
+          })()}
+        </View>
+      )}
+
+      {/* ── AI Financial Report (expandable sections) ──── */}
+      {(reportLoading || aiReport) && (
+        <View style={s.reportCard}>
+          <View style={s.reportHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <Text style={{ fontSize: 16 }}>🤖</Text>
+              <Text style={s.cardTitle}>AI Financial Report</Text>
+            </View>
+            {aiReport && (
+              <View style={[s.reportScoreBadge, {
+                backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : aiReport.score >= 40 ? ORANGE : RED) + '18'
+              }]}>
+                <Text style={[s.reportScoreText, {
+                  color: aiReport.score >= 80 ? GREEN_H : aiReport.score >= 60 ? ORANGE_H : aiReport.score >= 40 ? ORANGE_H : RED
+                }]}>{aiReport.score}/100 · {aiReport.scoreLabel}</Text>
+              </View>
+            )}
+          </View>
+
+          {reportLoading && !aiReport ? (
+            <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
+              <ActivityIndicator color={BLUE} size="small" />
+              <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Analyzing your finances...</Text>
+            </View>
+          ) : aiReport ? (
+            <>
+              <Text style={s.reportSummary}>{aiReport.summary}</Text>
+
+              {/* Each section is individually expandable */}
+              {aiReport.sections?.map((sec: any, i: number) => {
+                const isOpen = expandedSections.has(i)
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[s.reportSection, isOpen && s.reportSectionOpen]}
+                    onPress={() => setExpandedSections(prev => {
+                      const next = new Set(prev)
+                      if (next.has(i)) next.delete(i)
+                      else next.add(i)
+                      return next
+                    })}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <Text style={{ fontSize: 16 }}>{sec.icon}</Text>
+                        <Text style={s.reportSectionTitle}>{sec.title}</Text>
+                      </View>
+                      <Text style={{ fontSize: 12, color: BLUE }}>{isOpen ? '▲' : '▼'}</Text>
+                    </View>
+                    {isOpen && sec.items?.map((item: string, j: number) => (
+                      <View key={j} style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingLeft: 28 }}>
+                        <Text style={{ fontSize: 11, color: BLUE, marginTop: 2 }}>•</Text>
+                        <Text style={s.reportItem}>{item}</Text>
+                      </View>
+                    ))}
+                  </TouchableOpacity>
+                )
+              })}
+            </>
+          ) : null}
+        </View>
+      )}
+
       {/* ── Blueprint (compact) ──────────────────────────── */}
       <View style={s.card}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -317,28 +500,120 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           { label: 'Wealth', emoji: '📈', actual: flow.savingsPct, target: budget.savingsTarget, amount: Math.max(0, flow.savings), good: flow.savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
         ].map(row => {
           const barColor = row.good ? row.okColor : row.badColor
+          const budgetAmount = Math.round(flow.income * row.target / 100)
+          const isWealth = row.label === 'Wealth'
+          const overUnder = isWealth
+            ? (row.amount >= budgetAmount ? `${fmtInr(row.amount - budgetAmount)} above` : `${fmtInr(budgetAmount - row.amount)} below`)
+            : (row.amount <= budgetAmount ? `${fmtInr(budgetAmount - row.amount)} left` : `${fmtInr(row.amount - budgetAmount)} over`)
           return (
-            <View key={row.label} style={{ marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+            <View key={row.label} style={{ marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 13 }}>{row.emoji}</Text>
                   <Text style={s.bpLabel}>{row.label}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3 }}>{fmtInr(row.amount)}</Text>
-                  <View style={[s.bpPill, { backgroundColor: barColor + '18' }]}>
-                    <Text style={[s.bpPillText, { color: barColor }]}>{row.actual}%{row.good ? ' ✓' : ''}</Text>
-                  </View>
+                <View style={[s.bpPill, { backgroundColor: barColor + '18' }]}>
+                  <Text style={[s.bpPillText, { color: barColor }]}>{row.actual}%{row.good ? ' ✓' : ''}</Text>
                 </View>
+              </View>
+              {/* Amount row: actual vs budget */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 15, color: TXT1 }}>{fmtInr(row.amount)}</Text>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: row.good ? GREEN_H : RED }}>
+                  {isWealth ? (row.good ? '✓ ' : '') : ''}{overUnder} · limit {fmtInr(budgetAmount)}
+                </Text>
               </View>
               <View style={s.barTrack}>
                 <View style={[s.barFill, { width: `${Math.min(100, row.actual)}%`, backgroundColor: barColor }]} />
-                <View style={[s.barMarker, { left: `${Math.min(97, row.target)}%` }]} />
+                <View style={[s.barMarker, { left: `${Math.min(97, row.target)}%` }]}>
+                  <View style={s.barMarkerLine} />
+                  <Text style={s.barMarkerLabel}>{row.target}%</Text>
+                </View>
               </View>
             </View>
           )
         })}
       </View>
+
+      {/* ── Assets & Returns ─────────────────────────────── */}
+      {assets && (() => {
+        const ASSET_LABELS: Record<string, { label: string; emoji: string; color: string }> = {
+          liquidCash: { label: 'Cash & Savings', emoji: '💵', color: GREEN },
+          mutualFunds: { label: 'Mutual Funds', emoji: '📈', color: BLUE },
+          stocks: { label: 'Stocks', emoji: '📊', color: '#6366F1' },
+          epf: { label: 'EPF / PF', emoji: '🏦', color: TEAL },
+          ppf: { label: 'PPF', emoji: '🔒', color: '#8B5CF6' },
+          gold: { label: 'Gold', emoji: '🥇', color: ORANGE },
+          realEstate: { label: 'Real Estate', emoji: '🏠', color: RED },
+          other: { label: 'Other', emoji: '🔧', color: TXT2 },
+        }
+        const nw = Object.values(assets as Record<string, number>).reduce((s: number, v: number) => s + (v || 0), 0)
+        const activeAssets = Object.entries(assets as Record<string, number>)
+          .filter(([_, v]) => v > 0)
+          .sort(([_a, a], [_b, b]) => b - a)
+        if (activeAssets.length === 0) return null
+
+        const adviceMap: Record<string, { suggestion: string }> = {}
+        aiReport?.assetAdvice?.forEach((a: any) => {
+          const key = Object.keys(ASSET_LABELS).find(k => ASSET_LABELS[k].label.toLowerCase().includes(a.asset?.toLowerCase()) || a.asset?.toLowerCase().includes(k.toLowerCase()))
+          if (key) adviceMap[key] = a
+        })
+
+        return (
+          <View style={s.card}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Text style={s.cardTitle}>Assets & Allocation</Text>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#E0A820', fontFamily: 'Manrope_700Bold' }}>{fmtInr(nw)}</Text>
+            </View>
+            {/* Allocation bar */}
+            <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 12 }}>
+              {activeAssets.map(([key, val]) => (
+                <View key={key} style={{ flex: val / nw, backgroundColor: ASSET_LABELS[key]?.color || TXT3, minWidth: 1 }} />
+              ))}
+            </View>
+            {activeAssets.map(([key, val]) => {
+              const cfg = ASSET_LABELS[key]
+              if (!cfg) return null
+              const pct = nw > 0 ? Math.round((val / nw) * 100) : 0
+              const advice = adviceMap[key]
+              return (
+                <View key={key} style={{ marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: BG_SEC }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 16 }}>{cfg.emoji}</Text>
+                      <View>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: cfg.color, fontFamily: 'Manrope_700Bold' }}>{fmtInr(val)}</Text>
+                      <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{pct}% of portfolio</Text>
+                    </View>
+                  </View>
+                  {advice?.suggestion && (
+                    <View style={{ marginTop: 6, paddingLeft: 28, flexDirection: 'row', gap: 4 }}>
+                      <Text style={{ fontSize: 11, color: BLUE }}>💡</Text>
+                      <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular', flex: 1, lineHeight: 17 }}>{advice.suggestion}</Text>
+                    </View>
+                  )}
+                </View>
+              )
+            })}
+          </View>
+        )
+      })()}
+
+      {/* ── AI Coach CTA ─────────────────────────────────── */}
+      <TouchableOpacity style={s.coachCard} onPress={onNavigateCoach} activeOpacity={0.85}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={s.coachIcon}><Text style={{ fontSize: 20 }}>💬</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.coachTitle}>Ask AI Coach</Text>
+            <Text style={s.coachSub}>Get personalized advice on savings, investments, insurance & more</Text>
+          </View>
+          <Text style={{ fontSize: 16, color: BLUE }}>›</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* ── Expenses by Category ─────────────────────────── */}
       <View style={s.card}>
@@ -381,58 +656,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           </View>
         )}
       </View>
-
-      {/* ── Monthly Trend ────────────────────────────────── */}
-      {snapshots.length > 1 && (
-        <View style={s.card}>
-          <Text style={[s.cardTitle, { marginBottom: 14 }]}>Monthly Trend</Text>
-          {snapshots.map((snap, i) => {
-            const isCurrent = i === snapshots.length - 1
-            const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
-            const savedAmt = Math.max(0, snap.income - snap.spent)
-            const prev = i > 0 ? snapshots[i - 1] : null
-            const improving = prev ? snap.savedPct > prev.savedPct : false
-            return (
-              <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
-                <View style={s.trendMonthCol}>
-                  <Text style={[s.trendMonth, isCurrent && { color: BLUE }]}>{snap.short}</Text>
-                </View>
-                <View style={s.trendContent}>
-                  <View style={s.trendBarTrack}>
-                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= 20 ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
-                  </View>
-                  <View style={s.trendStats}>
-                    <Text style={s.trendStatText}>
-                      <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
-                      <Text style={{ color: TXT3 }}> spent</Text>
-                    </Text>
-                    <Text style={[s.trendSaved, { color: snap.savedPct >= 20 ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
-                      {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )
-          })}
-          {/* Insight */}
-          {(() => {
-            const curr = snapshots[snapshots.length - 1]
-            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null
-            if (!prev) return null
-            const diff = curr.savedPct - prev.savedPct
-            const msg = diff > 5
-              ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
-              : diff < -5
-              ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
-              : `Holding steady vs ${prev.short} — aim for 20%+ savings 🔵`
-            return (
-              <View style={s.trendInsight}>
-                <Text style={s.trendInsightText}>{msg}</Text>
-              </View>
-            )
-          })()}
-        </View>
-      )}
 
       <View style={{ height: 20 }} />
       </ScrollView>
@@ -589,6 +812,31 @@ const s = StyleSheet.create({
   ctaBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
   ctaArrow: { fontSize: 16, color: '#fff', fontWeight: '800' },
 
+  // AI Report
+  reportCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '25', borderLeftWidth: 4, borderLeftColor: BLUE },
+  reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  reportScoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  reportScoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  reportSummary: { fontSize: 14, color: TXT1, lineHeight: 21, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
+  reportSection: { marginBottom: 4, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: BG_SEC },
+  reportSectionOpen: { backgroundColor: BLUE_L, marginBottom: 8 },
+  reportSectionTitle: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  reportItem: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular', flex: 1 },
+  reportToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
+  reportToggleText: { fontSize: 13, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  reportCoachBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, paddingVertical: 12, marginTop: 8, backgroundColor: BLUE_L },
+  reportCoachText: { fontSize: 13, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' },
+
+  // Insight chips
+  insightChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: BORDER, maxWidth: 260 },
+  insightChipText: { fontSize: 12, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold', lineHeight: 17, flexShrink: 1 },
+
+  // Coach CTA
+  coachCard: { backgroundColor: BLUE_L, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '30' },
+  coachIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  coachTitle: { fontSize: 15, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  coachSub: { fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular', marginTop: 2 },
+
   // Card
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
 
@@ -600,9 +848,11 @@ const s = StyleSheet.create({
   bpLabel: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   bpPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   bpPillText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative' },
+  barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative', marginBottom: 2 },
   barFill: { position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3 },
-  barMarker: { position: 'absolute', top: -3, width: 2, height: 12, backgroundColor: '#9CA3AF', borderRadius: 1 },
+  barMarker: { position: 'absolute', top: -5, alignItems: 'center' },
+  barMarkerLine: { width: 2, height: 16, backgroundColor: TXT1, borderRadius: 1 },
+  barMarkerLabel: { fontSize: 9, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold', marginTop: 1 },
 
   // Category chips
   catChip: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1 },

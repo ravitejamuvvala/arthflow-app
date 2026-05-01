@@ -54,7 +54,7 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   const totalExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const saved = Math.max(0, income - totalExp)
   const savePct = income > 0 ? Math.round((saved / income) * 100) : 0
-  const age = profile?.age ?? 28
+  const age = profile?.age ?? 0
   const name = profile?.full_name?.split(' ')[0] ?? 'there'
   const monthlyIncome = profile?.monthly_income ?? income
   const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
@@ -102,11 +102,13 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   // --- Goals ---
   if (lc.includes('goal') || lc.includes('track') || lc.includes('funded') || lc.includes('needs')) {
     if (goals.length === 0) return `${name}, you haven't set any goals yet! Head to the Plan tab to create one. I'd recommend starting with an emergency fund and a retirement goal.`
-    const summaries = goals.slice(0, 3).map(g => {
+    const configuredGoals = goals.filter(g => g.target_amount > 0)
+    if (configuredGoals.length === 0) return `${name}, you've picked ${goals.length} goal${goals.length > 1 ? 's' : ''} but haven't set targets yet. Head to the Plan tab to set amounts and timelines!`
+    const summaries = configuredGoals.slice(0, 3).map(g => {
       const pct = Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
       return `• "${g.name}": ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)})`
     }).join('\n')
-    return `${name}, here's your goal progress:\n\n${summaries}\n\n${goals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
+    return `${name}, here's your goal progress:\n\n${summaries}\n\n${configuredGoals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
   }
 
   // --- Tax ---
@@ -197,7 +199,7 @@ export default function CoachScreen() {
 
       // Run the unified engine
       const baseIncome = p?.monthly_income ?? t.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-      const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 28, profile: p })
+      const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 0, profile: p })
       setEngineResult(result)
     } catch (e) {
       console.error('CoachScreen loadData error:', e)
