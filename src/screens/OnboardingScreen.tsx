@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useRef, useState } from 'react'
 import {
-  Animated,
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Animated,
+    Dimensions,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -197,14 +197,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
     // Also persist onboarding flag locally as a reliable fallback
     await AsyncStorage.setItem(`@arthflow_onboarded_${user.id}`, 'true')
 
-    // Create goals from selected chips with default targets
+    // Create goals from selected chips — target_amount = 0 so user fills in real values in Goals tab
     if (selectedGoals.length > 0) {
       const goalRows = selectedGoals.map(id => {
         const chip = GOAL_CHIPS.find(c => c.id === id)
         return {
           user_id: user.id,
           name: chip?.label ?? id,
-          target_amount: chip?.defaultTarget ?? income * 6,
+          target_amount: 0,
           saved_amount: 0,
           target_date: `${new Date().getFullYear() + 5}-12-31`,
         }
@@ -469,7 +469,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
   // ─── Step 5: AI Summary ─────────────────────────────────────────
   const renderSummary = () => {
-    const netWorth = savings > 0 ? savings * 3 : 0
+    // Engine-driven insight
+    const planInsight = savePct >= 20
+      ? `You're saving ${savePct}% — above the 20% benchmark. Start a SIP to grow your surplus.`
+      : savePct >= 10
+      ? `Saving ${savePct}%. Trim lifestyle by ${fmtInr(Math.round(lifestyle * 0.15))} to reach 20%.`
+      : savings > 0
+      ? `Saving only ${savePct}%. Cut ₹${Math.round((income * 0.2 - savings)).toLocaleString('en-IN')} from spending to build wealth.`
+      : `You're spending more than you earn. Reduce expenses by ${fmtInr(Math.abs(savings))} to break even.`
 
     return (
       <View style={s.stepContainer}>
@@ -484,13 +491,13 @@ export default function OnboardingScreen({ onComplete }: Props) {
             <View style={{ position: 'relative', zIndex: 1, alignItems: 'center' }}>
               <ArthFlowLogo size={28} />
               <Text style={s.summaryGreeting}>Hello, {name || 'Friend'} 👋</Text>
-              <Text style={s.summaryHeadline}>Your wealth profile is ready</Text>
+              <Text style={s.summaryHeadline}>Here's your plan</Text>
 
               <View style={s.summaryStats}>
                 {[
-                  { label: 'Net Worth', value: fmtInr(netWorth) },
-                  { label: 'Monthly surplus', value: fmtInr(Math.max(0, savings)) },
-                  { label: 'Goals', value: `${selectedGoals.length} set` },
+                  { label: 'Income', value: fmtInr(income) },
+                  { label: 'Expenses', value: fmtInr(totalExpenses) },
+                  { label: 'Savings', value: fmtInr(Math.max(0, savings)) },
                 ].map(({ label, value }) => (
                   <View key={label} style={{ alignItems: 'center' }}>
                     <Text style={s.summaryStatVal}>{value}</Text>
@@ -502,6 +509,17 @@ export default function OnboardingScreen({ onComplete }: Props) {
           </View>
 
           <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 16 }}>
+            {/* Plan insight card */}
+            <View style={[s.summaryCard, { backgroundColor: savePct >= 20 ? '#F0FDF4' : savePct >= 10 ? '#FEF3C7' : '#FEE2E2', borderWidth: 1, borderColor: savePct >= 20 ? '#BBF7D0' : savePct >= 10 ? '#FDE68A' : '#FCA5A5' }]}>
+              <View style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16 }}>{savePct >= 20 ? '✅' : savePct >= 10 ? '⚡' : '⚠️'}</Text>
+                  <Text style={[s.sliderLabel, { fontWeight: '800' }]}>Your #1 Insight</Text>
+                </View>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT1, lineHeight: 22 }}>{planInsight}</Text>
+              </View>
+            </View>
+
             {/* Risk profile card */}
             <View style={s.summaryCard}>
               <View style={[s.riskIconBox, { backgroundColor: riskCfg.color + '15' }]}>

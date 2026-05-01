@@ -1,12 +1,12 @@
 // ─── Insight Generator ──────────────────────────────────────────────────
 // Returns structured, prioritised insights from financial data
 
-import { fmtInr, getMoneyFlow, calculateMonthlyRequired } from './calculations'
+import { calculateMonthlyRequired, fmtInr, getMoneyFlow } from './calculations'
 
 export function generateInsights({ transactions, goals, profile, assets }) {
   const income = profile?.monthly_income || 0
   const flow = getMoneyFlow(transactions, income)
-  const age = profile?.age ?? 28
+  const age = profile?.age ?? 0
   const out = []
 
   // ── 1. Overspending check ────────────────────────────────
@@ -52,8 +52,8 @@ export function generateInsights({ transactions, goals, profile, assets }) {
     })
   }
 
-  // ── 4. Goal gap ──────────────────────────────────────────
-  goals.forEach(g => {
+  // ── 4. Goal gap (skip goals with no target set) ──────────
+  goals.filter(g => g.target_amount > 0).forEach(g => {
     const calc = calculateMonthlyRequired(g)
     if (calc.funded < 0.25 && calc.monthlyNeeded > flow.savings * 0.5) {
       out.push({
@@ -75,14 +75,14 @@ export function generateInsights({ transactions, goals, profile, assets }) {
     })
   }
 
-  // ── 6. Insurance check ───────────────────────────────────
-  if (income > 0 && age > 25) {
+  // ── 6. Insurance check (only show if no liquid assets tracked — user likely hasn't set up protection) ──
+  if (income > 0 && age > 25 && !assets?.hasInsurance) {
     const termNeeded = income * 12 * 15
     out.push({
       type: 'neutral', priority: 4,
-      title: `Term cover: ${fmtInr(termNeeded)} recommended`,
-      message: `15× annual income at age ${age}. A ₹1Cr plan costs ~₹700/month — cheapest at your age.`,
-      action: 'Check insurance',
+      title: `Have you checked your term insurance?`,
+      message: `At age ${age}, a ${fmtInr(termNeeded)} cover (15× income) costs ~₹700/month. Worth reviewing.`,
+      action: 'Ask coach about insurance',
     })
   }
 

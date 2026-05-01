@@ -115,7 +115,7 @@ export default function GoalsScreen() {
   const [showSheet, setShowSheet] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
   const [editGoal, setEditGoal] = useState<Goal | null>(null)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  // expandedId removed — no more projection scenarios on this screen
 
   // Form state
   const [fEmoji, setFEmoji] = useState('🎯')
@@ -222,9 +222,11 @@ export default function GoalsScreen() {
   }
 
   // ─── Computed ───────────────────────────────────────────────────
-  const totalSaved  = goals.reduce((s, g) => s + g.saved_amount, 0)
-  const totalTarget = goals.reduce((s, g) => s + g.target_amount, 0)
+  const configuredGoals = goals.filter(g => g.target_amount > 0)
+  const totalSaved  = configuredGoals.reduce((s, g) => s + g.saved_amount, 0)
+  const totalTarget = configuredGoals.reduce((s, g) => s + g.target_amount, 0)
   const overallPct  = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0
+  const needsSetupCount = goals.length - configuredGoals.length
   const thisYear    = new Date().getFullYear()
 
   // Year slider drag
@@ -268,15 +270,20 @@ export default function GoalsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}>
 
         {/* ── Summary Banner ─────────────────────────────────────── */}
-        {goals.length > 0 && (
+        {goals.length > 0 && totalTarget > 0 && (
           <View style={styles.heroCard}>
             <View style={styles.heroGlow} />
             <View style={styles.heroContent}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.heroLabel}>ACROSS ALL GOALS</Text>
+                  <Text style={styles.heroLabel}>ACROSS {configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''}</Text>
                   <Text style={styles.heroAmount}>{formatINR(totalSaved)}</Text>
                   <Text style={styles.heroSub}>saved of {formatINR(totalTarget)} target</Text>
+                  {needsSetupCount > 0 && (
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular', marginTop: 4 }}>
+                      {needsSetupCount} goal{needsSetupCount !== 1 ? 's' : ''} need setup ↓
+                    </Text>
+                  )}
                 </View>
                 <View style={{ position: 'relative', width: 64, height: 64 }}>
                   <GoalArc progress={overallPct} color={ORANGE} size={64} strokeWidth={6} bgColor="rgba(255,255,255,0.15)" />
@@ -303,15 +310,37 @@ export default function GoalsScreen() {
           </View>
         ) : (
           goals.map((goal) => {
-            const pct = Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
+            const needsSetup = !goal.target_amount || goal.target_amount <= 0
+            const pct = needsSetup ? 0 : Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
             const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : thisYear + 5
             const yearsLeft = Math.max(0, targetYear - thisYear)
-            const monthlySIP = yearsLeft > 0 ? Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12)) : 0
-            const proj = buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
-            const onTrack = proj.canAchieve
-            const goalColor = onTrack ? BLUE : ORANGE
-            const isExpanded = expandedId === goal.id
+            const monthlySIP = (needsSetup || yearsLeft <= 0) ? 0 : Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12))
+            const proj = needsSetup ? null : buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
+            const onTrack = proj?.canAchieve ?? false
+            const goalColor = needsSetup ? ORANGE : (onTrack ? BLUE : ORANGE)
             const emoji = goalEmoji(goal.name)
+
+            // Goal needs setup — show a simple setup prompt card
+            if (needsSetup) {
+              return (
+                <TouchableOpacity key={goal.id} style={[styles.goalCard, { borderColor: ORANGE + '40' }]} onPress={() => openEdit(goal)} activeOpacity={0.8}>
+                  <View style={{ padding: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: ORANGE_L, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.goalName}>{goal.name}</Text>
+                        <Text style={{ fontSize: 13, color: ORANGE_H, fontFamily: 'Manrope_400Regular', marginTop: 2 }}>Tap to set target amount & timeline</Text>
+                      </View>
+                      <View style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: ORANGE_L }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>Set up →</Text>
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )
+            }
 
             return (
               <View key={goal.id} style={[styles.goalCard, !onTrack && styles.goalCardWarn]}>
@@ -325,12 +354,8 @@ export default function GoalsScreen() {
                 <View style={{ padding: 16 }}>
                   {/* Header row */}
                   <View style={styles.goalHeader}>
-                    <View style={{ position: 'relative', width: 64, height: 64 }}>
-                      <GoalArc progress={pct} color={goalColor} size={64} strokeWidth={6} />
-                      <View style={styles.goalArcOverlay}>
-                        <Text style={[styles.goalArcPct, { color: goalColor }]}>{Math.round(pct)}%</Text>
-                        <Text style={{ fontSize: 14 }}>{emoji}</Text>
-                      </View>
+                    <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: goalColor + '15', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 24 }}>{emoji}</Text>
                     </View>
 
                     <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
@@ -346,7 +371,7 @@ export default function GoalsScreen() {
                         })()}
                       </View>
                       <Text style={styles.goalAmounts}>
-                        {formatINR(goal.saved_amount)} <Text style={{ color: TXT3 }}>of</Text> {formatINR(goal.target_amount)}
+                        {formatINR(goal.target_amount)}
                       </Text>
                       <Text style={styles.goalYears}>
                         {yearsLeft > 0 ? `${yearsLeft} yrs left · by ${targetYear}` : `Target: ${targetYear}`}
@@ -358,82 +383,12 @@ export default function GoalsScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* SIP row */}
+                  {/* Monthly needed */}
+                  {proj && (
                   <View style={styles.sipRow}>
                     <Text style={{ fontSize: 14, color: goalColor }}>📈</Text>
-                    <Text style={styles.sipText}>Monthly needed: {formatINR(proj.simpleNeeded)}/mo</Text>
-                    <Text style={[styles.sipStatus, { color: onTrack ? GREEN_H : ORANGE_H }]}>
-                      {onTrack ? 'On track ✓' : 'Needs ↑'}
-                    </Text>
+                    <Text style={styles.sipText}>Save {formatINR(proj.simpleNeeded)}/mo to reach goal</Text>
                   </View>
-
-                  {/* Projection toggle */}
-                  <TouchableOpacity style={[styles.projToggle, isExpanded && styles.projToggleActive]}
-                    onPress={() => setExpandedId(isExpanded ? null : goal.id)} activeOpacity={0.7}>
-                    <Text style={{ fontSize: 13 }}>✨</Text>
-                    <Text style={[styles.projToggleText, isExpanded && { color: '#fff' }]}>
-                      {isExpanded ? 'Hide' : 'Show'} Return Scenarios
-                    </Text>
-                    <Text style={{ fontSize: 12, color: isExpanded ? '#fff' : TEAL }}>
-                      {isExpanded ? '▲' : '▼'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Return Scenarios (expanded) */}
-                  {isExpanded && (
-                    <View style={{ marginTop: 12, gap: 8 }}>
-                      {/* Info box */}
-                      <View style={styles.infoBox}>
-                        <Text style={{ fontSize: 11, color: BLUE, marginTop: 1 }}>ℹ</Text>
-                        <Text style={styles.infoText}>
-                          To reach {formatINR(goal.target_amount)} by {targetYear} ({proj.yearsLeft} yrs), see how much you need at different return rates.
-                        </Text>
-                      </View>
-
-                      {/* Scenario cards */}
-                      {proj.scenarios.map(s => {
-                        const enough = s.projected >= goal.target_amount * 0.9
-                        const diff = s.projected - goal.target_amount
-                        return (
-                          <View key={s.label} style={[styles.scenarioCard, { borderColor: s.color + '30' }]}>
-                            <View style={[styles.scenarioHeader, { backgroundColor: s.color + '12' }]}>
-                              <Text style={{ fontSize: 15 }}>{s.emoji}</Text>
-                              <View style={{ flex: 1, marginLeft: 8 }}>
-                                <Text style={[styles.scenarioTitle, { color: s.color }]}>{s.label} · {s.returnPct}% p.a.</Text>
-                                <Text style={styles.scenarioRisk}>{s.riskLabel}</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.scenarioNeedLabel}>Need/month</Text>
-                                <Text style={[styles.scenarioNeedVal, { color: s.color }]}>{formatINR(s.monthlyNeeded)}</Text>
-                              </View>
-                            </View>
-                            <View style={styles.scenarioBody}>
-                              <View>
-                                <Text style={styles.scenarioBodyLabel}>₹{formatINR(monthlySIP)}/mo projects to</Text>
-                                <Text style={[styles.scenarioBodyVal, { color: enough ? GREEN_H : ORANGE_H }]}>
-                                  {formatINR(s.projected)}
-                                </Text>
-                              </View>
-                              <View style={[styles.scenarioResultBadge, { backgroundColor: enough ? GREEN_L : ORANGE_L }]}>
-                                <Text style={[styles.scenarioResultText, { color: enough ? GREEN_H : ORANGE_H }]}>
-                                  {enough ? `+${formatINR(diff)} surplus ✓` : `${formatINR(Math.abs(diff))} short`}
-                                </Text>
-                              </View>
-                            </View>
-                            <View style={styles.scenarioAssets}>
-                              <Text style={styles.scenarioAssetsText}>Example: {s.assets}</Text>
-                            </View>
-                          </View>
-                        )
-                      })}
-
-                      {/* SEBI Disclaimer */}
-                      <View style={styles.sebiBox}>
-                        <Text style={styles.sebiText}>
-                          ⚠️ Illustrative projections only. Returns shown are hypothetical and not guaranteed. Past performance is not indicative of future results. ArthFlow does not recommend specific investment products. Consult a SEBI-registered investment advisor (RIA) for personalised advice.
-                        </Text>
-                      </View>
-                    </View>
                   )}
                 </View>
               </View>
@@ -487,14 +442,6 @@ export default function GoalsScreen() {
                   keyboardType="numeric" style={styles.currencyInput} />
               </View>
 
-              {/* Already Saved */}
-              <Text style={styles.formLabel}>ALREADY SAVED</Text>
-              <View style={styles.currencyRow}>
-                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
-                <TextInput value={fSaved} onChangeText={setFSaved} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
-              </View>
-
               {/* Target Year */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <Text style={styles.formLabel}>TARGET YEAR</Text>
@@ -531,14 +478,6 @@ export default function GoalsScreen() {
                     style={{ fontSize: 18, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold', textAlign: 'center', minWidth: 52, padding: 0 }}
                   />
                 </View>
-              </View>
-
-              {/* Monthly SIP */}
-              <Text style={styles.formLabel}>MONTHLY SIP / CONTRIBUTION</Text>
-              <View style={styles.currencyRow}>
-                <Text style={[styles.currencyPrefix, { fontSize: 14 }]}>₹</Text>
-                <TextInput value={fMonthly} onChangeText={setFMonthly} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="numeric" style={[styles.currencyInput, { fontSize: 18 }]} />
               </View>
 
               {/* Priority */}

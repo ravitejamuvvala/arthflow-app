@@ -1,24 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-    ActivityIndicator,
-    Animated,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
-import { fetchAiChat } from '../lib/api'
+import { fetchAiChat, fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr } from '../utils/calculations'
-import { generateInsights } from '../utils/insights'
+import { runEngine } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE   = '#1E3A8A'
@@ -37,82 +37,6 @@ const TXT3   = '#9CA3AF'
 const BORDER = '#E5E7EB'
 const BG_SEC = '#F1F5F9'
 
-// ─── Health Score Calculator ────────────────────────────────────────────
-function calcHealthScore(txns: Transaction[], goals: Goal[], profile: Profile | null, prevTxns?: Transaction[]) {
-  const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expense = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const savings = Math.max(0, income - expense)
-  const savePct = income > 0 ? (savings / income) * 100 : 0
-  const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
-  const lifePct = income > 0 ? (lifestyle / income) * 100 : 0
-
-  const savingsScore = Math.min(35, Math.round((savePct / 30) * 35))
-  const spendScore = Math.min(25, lifePct <= 30 ? 25 : lifePct <= 50 ? 15 : 5)
-  const goalScore = goals.length > 0
-    ? Math.min(20, Math.round((goals.filter(g => (g.saved_amount / g.target_amount) > 0.1).length / goals.length) * 20))
-    : 10
-  const consistScore = txns.length > 5 ? 15 : txns.length > 2 ? 10 : 5
-
-  const score = Math.min(100, savingsScore + spendScore + goalScore + consistScore)
-
-  // Real trend: compare current month vs previous month
-  let trend: 'up' | 'down' | 'stable' = 'stable'
-  if (prevTxns && prevTxns.length > 0) {
-    const prevIncome = prevTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const prevExpense = prevTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    const prevSavePct = prevIncome > 0 ? ((prevIncome - prevExpense) / prevIncome) * 100 : 0
-    if (savePct > prevSavePct + 3) trend = 'up'
-    else if (savePct < prevSavePct - 3) trend = 'down'
-  } else {
-    trend = savePct >= 20 ? 'up' : savePct >= 10 ? 'stable' : 'down'
-  }
-
-  return {
-    score,
-    trend,
-    breakdown: [
-      { label: `Savings`, score: savingsScore, max: 35, emoji: '💰', detail: `${Math.round(savePct)}% saved` },
-      { label: `Spending`, score: spendScore, max: 25, emoji: '🛒', detail: `${Math.round(lifePct)}% lifestyle` },
-      { label: `Goals`, score: goalScore, max: 20, emoji: '🎯', detail: `${goals.filter(g => (g.saved_amount / g.target_amount) > 0.1).length} of ${goals.length} on track` },
-      { label: `Discipline`, score: consistScore, max: 20, emoji: '📊', detail: `${txns.length} logged` },
-    ],
-  }
-}
-
-// ─── Challenge Generator ────────────────────────────────────────────────
-function getChallenges(txns: Transaction[], profile: Profile | null) {
-  const income = profile?.monthly_income ?? txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expense = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
-  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
-  const dayOfMonth = new Date().getDate()
-  const daysLeft = daysInMonth - dayOfMonth
-
-  const challenges: { id: string; emoji: string; title: string; desc: string; difficulty: 'easy' | 'medium' | 'hard'; reward: string; color: string }[] = []
-
-  if (lifestyle > 0) {
-    const cut10 = Math.round(lifestyle * 0.1)
-    challenges.push({ id: 'cut10', emoji: '✂️', title: '10% Lifestyle Cut', desc: `Trim ₹${cut10.toLocaleString('en-IN')} from lifestyle this month`, difficulty: 'medium', reward: `Save ${fmtInr(cut10)}/mo`, color: ORANGE })
-  }
-
-  if (daysLeft >= 1) {
-    challenges.push({ id: 'nospend', emoji: '🚫', title: 'No-Spend Day', desc: 'Go one full day without spending anything', difficulty: 'easy', reward: 'Build discipline', color: TEAL })
-  }
-
-  if (income > 0) {
-    const target500 = Math.min(500, Math.round(income * 0.01))
-    challenges.push({ id: 'micro', emoji: '🐷', title: `₹${target500} Micro-Save`, desc: `Transfer ₹${target500} to savings right now`, difficulty: 'easy', reward: `${fmtInr(target500 * 12)}/year`, color: GREEN })
-  }
-
-  if (expense > income * 0.7) {
-    challenges.push({ id: 'budget', emoji: '📋', title: 'Budget Week', desc: `${daysLeft} days left — stay under ${fmtInr(Math.round(Math.max(income - expense, 0) / Math.max(daysLeft, 1)) * daysLeft)}`, difficulty: 'hard', reward: 'End month positive', color: RED })
-  }
-
-  challenges.push({ id: 'track', emoji: '📝', title: 'Track Everything', desc: 'Log every expense for 7 days straight', difficulty: 'medium', reward: 'Find hidden leaks', color: BLUE })
-
-  return challenges.slice(0, 4)
-}
-
 // ─── AI Reply (keyword-matching) ────────────────────────────────────────
 function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profile: Profile | null) {
   const lc = msg.toLowerCase()
@@ -130,7 +54,7 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   const totalExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const saved = Math.max(0, income - totalExp)
   const savePct = income > 0 ? Math.round((saved / income) * 100) : 0
-  const age = profile?.age ?? 28
+  const age = profile?.age ?? 0
   const name = profile?.full_name?.split(' ')[0] ?? 'there'
   const monthlyIncome = profile?.monthly_income ?? income
   const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
@@ -178,11 +102,13 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   // --- Goals ---
   if (lc.includes('goal') || lc.includes('track') || lc.includes('funded') || lc.includes('needs')) {
     if (goals.length === 0) return `${name}, you haven't set any goals yet! Head to the Plan tab to create one. I'd recommend starting with an emergency fund and a retirement goal.`
-    const summaries = goals.slice(0, 3).map(g => {
+    const configuredGoals = goals.filter(g => g.target_amount > 0)
+    if (configuredGoals.length === 0) return `${name}, you've picked ${goals.length} goal${goals.length > 1 ? 's' : ''} but haven't set targets yet. Head to the Plan tab to set amounts and timelines!`
+    const summaries = configuredGoals.slice(0, 3).map(g => {
       const pct = Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
       return `• "${g.name}": ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)})`
     }).join('\n')
-    return `${name}, here's your goal progress:\n\n${summaries}\n\n${goals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
+    return `${name}, here's your goal progress:\n\n${summaries}\n\n${configuredGoals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
   }
 
   // --- Tax ---
@@ -206,16 +132,15 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
 // ═════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
-export default function CoachScreen() {
+export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [txns, setTxns] = useState<Transaction[]>([])
-  const [prevTxns, setPrevTxns] = useState<Transaction[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [assets, setAssets] = useState<any>(null)
-  const [insights, setInsights] = useState<any[]>([])
-  const [dismissed, setDismissed] = useState<Set<number>>(new Set())
+  const [engineResult, setEngineResult] = useState<any>(null)
+  const [aiReport, setAiReport] = useState<any>(null)
 
   // Chat
   const [messages, setMessages] = useState([
@@ -223,10 +148,8 @@ export default function CoachScreen() {
   ])
   const [chatInput, setChatInput] = useState('')
   const [typing, setTyping] = useState(false)
-  const [showAskBar, setShowAskBar] = useState(false)
   const chatScroll = useRef<ScrollView>(null)
   const mainScroll = useRef<ScrollView>(null)
-  const chatSectionY = useRef(0)
 
   // Typing dots
   const dot1 = useRef(new Animated.Value(0)).current
@@ -243,9 +166,6 @@ export default function CoachScreen() {
     Animated.parallel([anim(dot1, 0), anim(dot2, 150), anim(dot3, 300)]).start()
   }, [dot1, dot2, dot3])
 
-  // Challenges accepted
-  const [accepted, setAccepted] = useState<Set<string>>(new Set())
-
   const loadData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -255,25 +175,17 @@ export default function CoachScreen() {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
 
-      // Also fetch previous month for trend comparison
-      const prevMonthStart = new Date(startOfMonth)
-      prevMonthStart.setMonth(prevMonthStart.getMonth() - 1)
-      const prevMonthEnd = new Date(startOfMonth)
-      prevMonthEnd.setMilliseconds(-1)
-
-      const [txnRes, prevTxnRes, goalRes, profileRes] = await Promise.all([
+      const [txnRes, goalRes, profileRes] = await Promise.all([
         supabase.from('transactions').select('*').gte('date', startOfMonth.toISOString()).order('date', { ascending: false }),
-        supabase.from('transactions').select('*').gte('date', prevMonthStart.toISOString()).lt('date', startOfMonth.toISOString()),
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
         supabase.from('profiles').select('*').eq('id', user.id).single(),
       ])
 
       const t = txnRes.data ?? []
-      const pt = prevTxnRes.data ?? []
       const g = goalRes.data ?? []
       const p = profileRes.data ?? null
 
-      // Load assets from AsyncStorage for insights
+      // Load assets from AsyncStorage
       let loadedAssets = null
       try {
         const raw = await AsyncStorage.getItem('@arthflow_assets')
@@ -281,11 +193,65 @@ export default function CoachScreen() {
       } catch {}
 
       setTxns(t)
-      setPrevTxns(pt)
       setGoals(g)
       setProfile(p)
       setAssets(loadedAssets)
-      setInsights(generateInsights({ transactions: t, goals: g, profile: p, assets: loadedAssets }))
+
+      // Run the unified engine
+      const baseIncome = p?.monthly_income ?? t.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+      const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 0, profile: p })
+      setEngineResult(result)
+
+      // Load AI report from cache, or fetch fresh if missing/stale
+      let reportLoaded = false
+      try {
+        const raw = await AsyncStorage.getItem('@arthflow_ai_report')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+            setAiReport(parsed.report)
+            reportLoaded = true
+          }
+        }
+      } catch {}
+
+      // If no cached report, fetch fresh
+      if (!reportLoaded && p) {
+        try {
+          const income = baseIncome || p?.monthly_income || 0
+          const spent = t.filter((tx: Transaction) => tx.type === 'expense').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const lifestyle = t.filter((tx: Transaction) => tx.category === 'lifestyle').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const essentials = t.filter((tx: Transaction) => tx.category === 'essentials').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const emis = t.filter((tx: Transaction) => tx.category === 'emis').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+          const report = await fetchAiReport({
+            profile: p,
+            transactions: t,
+            goals: g.map((goal: Goal) => {
+              const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
+              const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
+              const monthsLeft = yearsLeft * 12
+              const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
+              const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
+              return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
+            }),
+            assets: loadedAssets,
+            monthlyFlow: {
+              income,
+              spent,
+              saved: Math.max(0, income - spent),
+              savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
+              lifestyle,
+              lifePct: income > 0 ? Math.round((lifestyle / income) * 100) : 0,
+              essentials,
+              emis,
+            },
+          })
+          setAiReport(report)
+          await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
+        } catch (e) {
+          console.error('CoachScreen AI report fetch error:', e)
+        }
+      }
     } catch (e) {
       console.error('CoachScreen loadData error:', e)
     } finally {
@@ -295,20 +261,21 @@ export default function CoachScreen() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
-  const onRefresh = () => { setRefreshing(true); loadData() }
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await AsyncStorage.removeItem('@arthflow_ai_report')
+    loadData()
+  }
 
   const sendMessage = async (text?: string) => {
     const msg = (text || chatInput).trim()
     if (!msg) return
-    // Auto-open chat if not visible
-    if (!showAskBar) setShowAskBar(true)
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: msg }])
     setChatInput('')
     setTyping(true)
     animateTyping()
 
-    // Scroll to chat section
-    setTimeout(() => mainScroll.current?.scrollToEnd({ animated: true }), 300)
+    setTimeout(() => chatScroll.current?.scrollToEnd({ animated: true }), 300)
 
     // Always fetch FRESH data from Supabase before sending to AI
     let freshTxns = txns
@@ -336,7 +303,6 @@ export default function CoachScreen() {
           if (raw) freshAssets = JSON.parse(raw)
         } catch {}
 
-        // Also update component state so UI stays in sync
         setTxns(freshTxns)
         setGoals(freshGoals)
         setProfile(freshProfile)
@@ -376,7 +342,6 @@ export default function CoachScreen() {
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
     } catch (err) {
       console.error('AI chat error:', err)
-      // Fallback to local reply if backend fails
       const fallback = generateAIReply(msg, freshTxns, freshGoals, freshProfile)
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
     } finally {
@@ -385,23 +350,13 @@ export default function CoachScreen() {
     }
   }
 
-  const openChat = () => {
-    if (!showAskBar) setShowAskBar(true)
-    setTimeout(() => mainScroll.current?.scrollToEnd({ animated: true }), 300)
-  }
-
-  const dismiss = (idx: number) => setDismissed(prev => new Set(prev).add(idx))
-  const activeInsights = insights.filter((_, i) => !dismissed.has(i))
-
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={BLUE} /></View>
   }
 
-  const health = calcHealthScore(txns, goals, profile, prevTxns)
-  const challenges = getChallenges(txns, profile)
-  const scoreColor = health.score >= 70 ? GREEN : health.score >= 45 ? ORANGE : RED
-  const trendIcon = health.trend === 'up' ? '↑' : health.trend === 'down' ? '↓' : '→'
-  const trendColor = health.trend === 'up' ? GREEN : health.trend === 'down' ? RED : TXT3
+  const status = engineResult?.status
+  const flow = engineResult?.flow
+  const scoreColor = status?.status === 'on track' ? GREEN : status?.status === 'slightly off track' ? ORANGE : RED
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -411,23 +366,20 @@ export default function CoachScreen() {
     return `Good evening, ${name}`
   }
 
-  // Daily pulse — uses real data
+  // Daily pulse — uses engine flow data
   const pulseMsg = () => {
-    const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const expense = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    if (!flow) return 'No transactions this month yet. Start logging to get personalised insights! 📝'
     const dayOfMonth = new Date().getDate()
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
     const pctMonth = Math.round((dayOfMonth / daysInMonth) * 100)
-    const realIncome = income > 0 ? income : (profile?.monthly_income ?? 0)
-    const pctBudget = realIncome > 0 ? Math.round((expense / realIncome) * 100) : 0
+    const pctBudget = flow.income > 0 ? Math.round((flow.totalSpent / flow.income) * 100) : 0
 
-    if (realIncome === 0 && expense === 0) return `No transactions this month yet. Start logging to get personalised insights! 📝`
-    if (realIncome === 0) return `You've spent ${fmtInr(expense)} so far. Add your income to see budget analysis.`
+    if (flow.income === 0 && flow.totalSpent === 0) return 'No transactions this month yet. Start logging to get personalised insights! 📝'
+    if (flow.income === 0) return `You've spent ${fmtInr(flow.totalSpent)} so far. Add your income to see budget analysis.`
 
-    const saved = Math.max(0, realIncome - expense)
-    if (pctBudget < pctMonth - 10) return `Spent ${fmtInr(expense)} (${pctBudget}% of income) with ${100 - pctMonth}% of the month left. Saving ${fmtInr(saved)} so far. 🟢`
-    if (pctBudget > pctMonth + 15) return `Spent ${fmtInr(expense)} (${pctBudget}% of income), only ${pctMonth}% through the month. Slow down to save more. 🟡`
-    return `Spent ${fmtInr(expense)} (${pctBudget}%), ${pctMonth}% through the month. On track to save ${fmtInr(saved)}. 🔵`
+    if (pctBudget < pctMonth - 10) return `Spent ${fmtInr(flow.totalSpent)} (${pctBudget}% of income) with ${100 - pctMonth}% of the month left. Saving ${fmtInr(flow.savings)} so far. 🟢`
+    if (pctBudget > pctMonth + 15) return `Spent ${fmtInr(flow.totalSpent)} (${pctBudget}% of income), only ${pctMonth}% through the month. Slow down to save more. 🟡`
+    return `Spent ${fmtInr(flow.totalSpent)} (${pctBudget}%), ${pctMonth}% through the month. On track to save ${fmtInr(flow.savings)}. 🔵`
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -440,9 +392,7 @@ export default function CoachScreen() {
           <Text style={s.brandText}>ARTHFLOW</Text>
         </View>
         <View style={s.badge}>
-          <TouchableOpacity onPress={openChat} activeOpacity={0.7}>
-            <Text style={s.badgeTxt}>✨ AI</Text>
-          </TouchableOpacity>
+          <Text style={s.badgeTxt}>✨ AI Coach</Text>
         </View>
       </View>
 
@@ -453,7 +403,7 @@ export default function CoachScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Hero Card (dark navy, matches other screens) ─── */}
+        {/* ── Status Hero ─── */}
         <View style={s.heroCard}>
           <View style={s.heroGlow} />
           <View style={s.heroContent}>
@@ -462,238 +412,210 @@ export default function CoachScreen() {
               <Text style={s.pulseTxt}>{pulseMsg()}</Text>
             </View>
 
-            {/* Health Score */}
-            <View style={s.healthSection}>
-              <View style={s.healthTop}>
-                <View style={{ alignItems: 'center' }}>
-                  <View style={[s.scoreCircle, { borderColor: scoreColor }]}>
-                    <Text style={[s.scoreNum, { color: scoreColor }]}>{health.score}</Text>
-                    <Text style={s.scoreLabel}>/ 100</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                    <Text style={[s.trendIcon, { color: trendColor }]}>{trendIcon}</Text>
-                    <Text style={[s.trendText, { color: trendColor }]}>
-                      {health.trend === 'up' ? 'Improving' : health.trend === 'down' ? 'Needs work' : 'Steady'}
-                      {prevTxns.length > 0 ? ' vs last month' : ''}
-                    </Text>
-                  </View>
+            {/* Engine Status */}
+            {status && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                <View style={[s.statusBadge, { borderColor: scoreColor }]}>
+                  <Text style={{ fontSize: 18 }}>{status.emoji}</Text>
+                  <Text style={[s.statusLabel, { color: scoreColor }]}>{status.status}</Text>
                 </View>
-                <View style={s.breakdownCol}>
-                  {health.breakdown.map(b => (
-                    <View key={b.label} style={s.breakdownRow}>
-                      <Text style={{ fontSize: 13 }}>{b.emoji}</Text>
-                      <Text style={s.breakdownLabel}>{b.label}</Text>
-                      <View style={s.breakdownBarBg}>
-                        <View style={[s.breakdownBarFill, { width: `${(b.score / b.max) * 100}%`, backgroundColor: b.score / b.max >= 0.7 ? GREEN : b.score / b.max >= 0.4 ? ORANGE : RED }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.statusMsg}>{status.message}</Text>
+                  {flow && (
+                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+                      <View>
+                        <Text style={s.flowLabel}>Saving</Text>
+                        <Text style={s.flowValue}>{flow.savingsPct}%</Text>
                       </View>
-                      <Text style={s.breakdownScore}>{b.score}/{b.max}</Text>
+                      <View>
+                        <Text style={s.flowLabel}>Needs</Text>
+                        <Text style={s.flowValue}>{flow.needsPct}%</Text>
+                      </View>
+                      <View>
+                        <Text style={s.flowLabel}>Wants</Text>
+                        <Text style={s.flowValue}>{flow.wantsPct}%</Text>
+                      </View>
                     </View>
-                  ))}
+                  )}
                 </View>
               </View>
-              <Text style={s.healthTitle}>Financial Health</Text>
-            </View>
+            )}
           </View>
         </View>
 
-        {/* ── Action Nudges ─── */}
-        {activeInsights.length > 0 && (
-          <>
-            <View style={s.sectionRow}>
-              <Text style={s.sectionTitle}>🎯 Action Items</Text>
-              <View style={s.countBadge}><Text style={s.countTxt}>{activeInsights.length}</Text></View>
-            </View>
-            {activeInsights.slice(0, 3).map((ins, i) => {
-              const isWarning = ins.type === 'warning' || ins.type === 'risk'
-              const cardBg = isWarning ? '#FFF7ED' : '#F0FDF4'
-              const accent = isWarning ? ORANGE : GREEN
-              return (
-                <View key={i} style={[s.nudgeCard, { backgroundColor: cardBg, borderLeftColor: accent }]}>
-                  <View style={s.nudgeTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.nudgeTitle}>{ins.title}</Text>
-                      <Text style={s.nudgeMsg}>{ins.message}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => dismiss(i)} style={s.dismissBtn}>
-                      <Text style={{ fontSize: 10, color: TXT3 }}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {ins.action && (
-                    <TouchableOpacity style={[s.nudgeCta, { backgroundColor: accent }]} activeOpacity={0.85}
-                      onPress={() => sendMessage(`${ins.title}: ${ins.message}. What should I do?`)}>
-                      <Text style={s.nudgeCtaTxt}>{ins.action}</Text>
-                    </TouchableOpacity>
-                  )}
+        {/* ── AI Financial Report Dashboard ─── */}
+        {aiReport && (
+          <View>
+            {/* Score Card */}
+            <View style={s.dashCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 18 }}>🤖</Text>
+                  <Text style={s.dashTitle}>Financial Health</Text>
                 </View>
-              )
-            })}
-          </>
+                <View style={[s.scoreBadge, {
+                  backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED) + '18'
+                }]}>
+                  <Text style={[s.scoreText, {
+                    color: aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED
+                  }]}>{aiReport.score}/100 · {aiReport.scoreLabel}</Text>
+                </View>
+              </View>
+              <Text style={s.dashSummary}>{aiReport.summary}</Text>
+            </View>
+
+            {/* Each section as its own card */}
+            {aiReport.sections?.map((sec: any, i: number) => (
+              <View key={i} style={s.sectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={s.sectionIconWrap}>
+                    <Text style={{ fontSize: 18 }}>{sec.icon}</Text>
+                  </View>
+                  <Text style={s.sectionCardTitle}>{sec.title}</Text>
+                </View>
+                {sec.items?.map((item: string, j: number) => (
+                  <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
+                    <Text style={s.sectionItemText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+
+            {/* Protection Checklist Card */}
+            {aiReport.protectionChecklist?.length > 0 && (
+              <View style={s.protectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Text style={{ fontSize: 18 }}>🛡️</Text>
+                  </View>
+                  <View>
+                    <Text style={s.sectionCardTitle}>Protection Checklist</Text>
+                    <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+                  </View>
+                </View>
+                {aiReport.protectionChecklist.map((p: any, i: number) => {
+                  const statusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
+                  const statusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
+                  const statusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
+                  return (
+                    <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        <Text style={{ fontSize: 16 }}>{p.icon}</Text>
+                        <Text style={s.protectionName}>{p.item}</Text>
+                        <View style={[s.protectionBadge, { backgroundColor: statusBg }]}>
+                          <Text style={[s.protectionBadgeTxt, { color: statusColor }]}>{statusLabel}</Text>
+                        </View>
+                      </View>
+                      <View style={{ paddingLeft: 30 }}>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Have</Text>
+                          <Text style={s.protectionValue}>{p.have}</Text>
+                        </View>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Need</Text>
+                          <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
+                        </View>
+                        {p.action && (
+                          <View style={[s.protectionAction, { backgroundColor: statusBg }]}>
+                            <Text style={{ fontSize: 12, color: statusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+            )}
+
+            {/* Asset Recommendations */}
+            {aiReport.assetAdvice?.length > 0 && (
+              <View style={s.sectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={[s.sectionIconWrap, { backgroundColor: TEAL_L }]}>
+                    <Text style={{ fontSize: 18 }}>📊</Text>
+                  </View>
+                  <Text style={s.sectionCardTitle}>Asset Recommendations</Text>
+                </View>
+                {aiReport.assetAdvice.map((a: any, i: number) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: 11, color: TEAL, marginTop: 2 }}>→</Text>
+                    <Text style={{ fontSize: 13, color: TXT2, fontFamily: 'Manrope_400Regular', flex: 1, lineHeight: 19 }}>
+                      <Text style={{ fontWeight: '700', color: TXT1 }}>{a.asset}: </Text>{a.suggestion}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
         )}
 
-        {/* ── Money Challenges ─── */}
-        <View style={[s.sectionRow, { marginTop: 20 }]}>
-          <Text style={s.sectionTitle}>🏆 Challenges</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-          {challenges.map(ch => {
-            const isAccepted = accepted.has(ch.id)
-            return (
-              <View key={ch.id} style={[s.challengeCard, isAccepted && { borderColor: ch.color + '60' }]}>
-                <View style={s.diffBadge}>
-                  <Text style={[s.diffTxt, { color: ch.difficulty === 'easy' ? GREEN : ch.difficulty === 'medium' ? ORANGE : RED }]}>
-                    {ch.difficulty === 'easy' ? '🟢' : ch.difficulty === 'medium' ? '🟡' : '🔴'} {ch.difficulty}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 28, marginBottom: 8 }}>{ch.emoji}</Text>
-                <Text style={s.challengeTitle}>{ch.title}</Text>
-                <Text style={s.challengeDesc}>{ch.desc}</Text>
-                <View style={[s.challengeReward, { backgroundColor: ch.color + '15' }]}>
-                  <Text style={[s.challengeRewardTxt, { color: ch.color }]}>🎁 {ch.reward}</Text>
-                </View>
-                <TouchableOpacity
-                  style={[s.challengeBtn, isAccepted ? { backgroundColor: ch.color + '15' } : { backgroundColor: ch.color }]}
-                  onPress={() => setAccepted(prev => { const n = new Set(prev); isAccepted ? n.delete(ch.id) : n.add(ch.id); return n })}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[s.challengeBtnTxt, isAccepted && { color: ch.color }]}>{isAccepted ? '✓ Accepted' : 'Accept'}</Text>
+        {/* ── AI Chat (always visible) ─── */}
+        <View style={{ marginTop: 20 }}>
+          <View style={s.chatHeader}>
+            <Text style={{ fontSize: 16 }}>💬</Text>
+            <Text style={s.chatHeaderText}>Ask your AI coach</Text>
+          </View>
+
+          <View style={s.chatContainer}>
+            {/* Quick prompts */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
+              {['How am I doing?', 'Cut expenses', 'SIP plan', 'Emergency fund', 'Tax tips', 'Insurance advice'].map(p => (
+                <TouchableOpacity key={p} style={s.promptChip} onPress={() => sendMessage(p)}>
+                  <Text style={s.promptChipTxt}>{p}</Text>
                 </TouchableOpacity>
-              </View>
-            )
-          })}
-        </ScrollView>
+              ))}
+            </ScrollView>
 
-        {/* ── Risk & Protection ─── */}
-        <View style={[s.sectionRow, { marginTop: 20 }]}>
-          <Text style={s.sectionTitle}>🛡️ Risk & Protection</Text>
-        </View>
-        {(() => {
-          const monthlyExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-          const liquid = assets?.liquidCash ?? 0
-          const epf = assets?.epf ?? 0
-          const needed6 = (monthlyExp || (profile?.expenses_essentials ?? 0) + (profile?.expenses_lifestyle ?? 0) + (profile?.expenses_emis ?? 0)) * 6
-          const monthsCovered = needed6 > 0 ? Math.floor(liquid / (needed6 / 6)) : 0
-
-          const emergencyStatus: 'ok' | 'partial' | 'missing' = monthsCovered >= 6 ? 'ok' : monthsCovered >= 1 ? 'partial' : 'missing'
-          const emergencyDesc = monthsCovered >= 6
-            ? `${monthsCovered} months covered ✅`
-            : monthsCovered >= 1
-            ? `~${monthsCovered} month${monthsCovered > 1 ? 's' : ''} covered — need 6 months.`
-            : 'No emergency fund yet.'
-          const emergencyImpact = monthsCovered < 6
-            ? `You need ${fmtInr(needed6)} (6 months of expenses) — currently ${fmtInr(liquid)} in liquid cash.`
-            : ''
-
-          const items = [
-            { id: 'emergency', label: 'Emergency Fund', icon: '🛡️', status: emergencyStatus, desc: emergencyDesc, impact: emergencyImpact },
-            { id: 'health', label: 'Health Insurance', icon: '🏥', status: 'missing' as const, desc: 'Not tracked yet.', impact: 'A medical emergency can wipe out savings. Ask me for a plan.' },
-            { id: 'life', label: 'Term Life Insurance', icon: '❤️', status: 'missing' as const, desc: 'Not tracked yet.', impact: 'Your family needs financial protection. Ask me for advice.' },
-          ]
-
-          return items.map(item => {
-          const isMissing = item.status === 'missing'
-          const isPartial = item.status === 'partial'
-          const isOk = item.status === 'ok'
-          const statusColor = isOk ? GREEN : isPartial ? ORANGE : RED
-          const statusLabel = isOk ? 'Covered' : isPartial ? 'Partial' : 'Missing'
-          const bgColor = isOk ? GREEN_L : isPartial ? ORANGE_L : RED_L
-          return (
-            <View key={item.id} style={[s.protCard, { borderLeftColor: statusColor }]}>
-              <View style={s.protRow}>
-                <Text style={{ fontSize: 20 }}>{item.icon}</Text>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={s.protName}>{item.label}</Text>
-                    <View style={[s.protBadge, { backgroundColor: bgColor }]}>
-                      <Text style={[s.protBadgeLabel, { color: statusColor }]}>{statusLabel}</Text>
-                    </View>
+            {/* Messages */}
+            <ScrollView
+              ref={chatScroll}
+              style={s.chatList}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              onContentSizeChange={() => chatScroll.current?.scrollToEnd({ animated: true })}
+            >
+              {messages.map(m => (
+                <View key={m.id} style={[s.bubble, m.role === 'user' ? s.bubbleUser : s.bubbleAI]}>
+                  {m.role === 'ai' && <View style={s.aiAvatar}><Text style={{ fontSize: 10 }}>✨</Text></View>}
+                  <View style={[s.bubbleBody, m.role === 'user' ? s.bubbleBodyUser : s.bubbleBodyAI]}>
+                    <Text style={[s.bubbleTxt, m.role === 'user' && { color: '#FFF' }]}>{m.text}</Text>
                   </View>
-                  <Text style={s.protDesc}>{item.desc}</Text>
                 </View>
-              </View>
-              {!isOk && (
-                <TouchableOpacity
-                  style={[s.protFixBtn, { backgroundColor: statusColor }]}
-                  onPress={() => sendMessage(`I need help with ${item.label}. ${item.impact} What should I do?`)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={s.protFixBtnText}>Get advice →</Text>
-                </TouchableOpacity>
+              ))}
+              {typing && (
+                <View style={[s.bubble, s.bubbleAI]}>
+                  <View style={s.aiAvatar}><Text style={{ fontSize: 10 }}>✨</Text></View>
+                  <View style={[s.bubbleBody, s.bubbleBodyAI, { flexDirection: 'row', gap: 4, paddingVertical: 12 }]}>
+                    {[dot1, dot2, dot3].map((d, i) => (
+                      <Animated.View key={i} style={[s.typingDot, { transform: [{ translateY: d }] }]} />
+                    ))}
+                  </View>
+                </View>
               )}
-            </View>
-          )
-        })})()}
+            </ScrollView>
 
-        {/* ── Quick Ask (Collapsible Chat) ─── */}
-        <View style={{ marginTop: 24 }}>
-          <TouchableOpacity style={s.askToggle} onPress={() => setShowAskBar(!showAskBar)} activeOpacity={0.8}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 16 }}>💬</Text>
-              <Text style={s.askToggleText}>Ask your AI coach</Text>
-            </View>
-            <Text style={{ fontSize: 16, color: TXT3 }}>{showAskBar ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-
-          {showAskBar && (
-            <View style={s.chatContainer}>
-              {/* Quick prompts */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
-                {['How am I doing?', 'Cut expenses', 'SIP plan', 'Emergency fund', 'Tax tips'].map(p => (
-                  <TouchableOpacity key={p} style={s.promptChip} onPress={() => sendMessage(p)}>
-                    <Text style={s.promptChipTxt}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Messages */}
-              <ScrollView
-                ref={chatScroll}
-                style={s.chatList}
-                contentContainerStyle={{ paddingBottom: 8 }}
-                onContentSizeChange={() => chatScroll.current?.scrollToEnd({ animated: true })}
-              >
-                {messages.map(m => (
-                  <View key={m.id} style={[s.bubble, m.role === 'user' ? s.bubbleUser : s.bubbleAI]}>
-                    {m.role === 'ai' && <View style={s.aiAvatar}><Text style={{ fontSize: 10 }}>✨</Text></View>}
-                    <View style={[s.bubbleBody, m.role === 'user' ? s.bubbleBodyUser : s.bubbleBodyAI]}>
-                      <Text style={[s.bubbleTxt, m.role === 'user' && { color: '#FFF' }]}>{m.text}</Text>
-                    </View>
-                  </View>
-                ))}
-                {typing && (
-                  <View style={[s.bubble, s.bubbleAI]}>
-                    <View style={s.aiAvatar}><Text style={{ fontSize: 10 }}>✨</Text></View>
-                    <View style={[s.bubbleBody, s.bubbleBodyAI, { flexDirection: 'row', gap: 4, paddingVertical: 12 }]}>
-                      {[dot1, dot2, dot3].map((d, i) => (
-                        <Animated.View key={i} style={[s.typingDot, { transform: [{ translateY: d }] }]} />
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </ScrollView>
-
-              {/* Input */}
-              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                <View style={s.inputBar}>
-                  <TextInput
-                    style={s.chatInput}
-                    value={chatInput}
-                    onChangeText={setChatInput}
-                    placeholder="Ask anything..."
-                    placeholderTextColor={TXT3}
-                    onSubmitEditing={() => sendMessage()}
-                    returnKeyType="send"
-                  />
-                  <TouchableOpacity
-                    style={[s.sendBtn, !chatInput.trim() && { opacity: 0.4 }]}
-                    onPress={() => sendMessage()}
-                    disabled={!chatInput.trim()}
-                  >
-                    <Text style={s.sendTxt}>↑</Text>
-                  </TouchableOpacity>
-                </View>
-              </KeyboardAvoidingView>
-            </View>
-          )}
+            {/* Input */}
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+              <View style={s.inputBar}>
+                <TextInput
+                  style={s.chatInput}
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  placeholder="Ask anything about your money..."
+                  placeholderTextColor={TXT3}
+                  onSubmitEditing={() => sendMessage()}
+                  returnKeyType="send"
+                />
+                <TouchableOpacity
+                  style={[s.sendBtn, !chatInput.trim() && { opacity: 0.4 }]}
+                  onPress={() => sendMessage()}
+                  disabled={!chatInput.trim()}
+                >
+                  <Text style={s.sendTxt}>↑</Text>
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -712,29 +634,20 @@ const s = StyleSheet.create({
   badge: { backgroundColor: TEAL_L, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   badgeTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: TEAL },
 
-  // Hero card (dark navy, matches other screens)
+  // Hero card
   heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
   greeting: { fontSize: 22, fontFamily: 'Manrope_700Bold', color: '#fff', marginBottom: 8 },
-  pulseCard: { borderRadius: 16, padding: 14, marginBottom: 16, backgroundColor: 'rgba(255,255,255,0.1)' },
+  pulseCard: { borderRadius: 16, padding: 14, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)' },
   pulseTxt: { fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 21, fontFamily: 'Manrope_400Regular', fontWeight: '600' },
 
-  // Health score (inside hero)
-  healthSection: { marginTop: 4 },
-  healthTop: { flexDirection: 'row', gap: 20, alignItems: 'center' },
-  healthTitle: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1, marginTop: 16, textAlign: 'center' },
-  scoreCircle: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
-  scoreNum: { fontSize: 28, fontFamily: 'Manrope_700Bold' },
-  scoreLabel: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: -2 },
-  trendIcon: { fontSize: 16, fontWeight: '800' },
-  trendText: { fontSize: 13, fontFamily: 'Manrope_700Bold' },
-  breakdownCol: { flex: 1, gap: 8 },
-  breakdownRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  breakdownLabel: { fontSize: 12, fontFamily: 'Manrope_400Regular', color: 'rgba(255,255,255,0.55)', width: 64 },
-  breakdownBarBg: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
-  breakdownBarFill: { height: '100%', borderRadius: 3 },
-  breakdownScore: { fontSize: 11, fontFamily: 'Manrope_700Bold', color: 'rgba(255,255,255,0.45)', width: 30, textAlign: 'right' },
+  // Engine status
+  statusBadge: { borderRadius: 16, borderWidth: 2, padding: 12, alignItems: 'center', gap: 4, width: 80 },
+  statusLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusMsg: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19, fontFamily: 'Manrope_400Regular' },
+  flowLabel: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  flowValue: { fontSize: 14, color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 1 },
 
   // Section headers
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
@@ -742,45 +655,37 @@ const s = StyleSheet.create({
   countBadge: { backgroundColor: ORANGE_L, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   countTxt: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: ORANGE },
 
-  // Nudge cards
-  nudgeCard: { borderLeftWidth: 3, borderRadius: 16, padding: 16, marginBottom: 10 },
-  nudgeTop: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  nudgeTitle: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TXT1, marginBottom: 4 },
-  nudgeMsg: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
-  dismissBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center' },
-  nudgeCta: { marginTop: 12, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  nudgeCtaTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
+  // AI Report Dashboard
+  dashCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: BLUE + '20', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  dashTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  dashSummary: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
+  scoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  scoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
 
-  // Challenges
-  challengeCard: { width: 170, borderRadius: 20, padding: 16, backgroundColor: '#FFF', borderWidth: 1, borderColor: BORDER, marginBottom: 4 },
-  challengeTitle: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TXT1, marginBottom: 4 },
-  challengeDesc: { fontSize: 12, color: TXT2, lineHeight: 18, marginBottom: 10, fontFamily: 'Manrope_400Regular', minHeight: 34 },
-  challengeReward: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, marginBottom: 10, alignSelf: 'flex-start' },
-  challengeRewardTxt: { fontSize: 11, fontFamily: 'Manrope_700Bold' },
-  challengeBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  challengeBtnTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
-  diffBadge: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 6, backgroundColor: BG_SEC },
-  diffTxt: { fontSize: 10, fontFamily: 'Manrope_700Bold', textTransform: 'capitalize' },
+  // Section cards
+  sectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER },
+  sectionIconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: BLUE_L, alignItems: 'center', justifyContent: 'center' },
+  sectionCardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sectionItemText: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
 
-  // Protection cards
-  protCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER, borderLeftWidth: 3 },
-  protRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  protName: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TXT1 },
-  protBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
-  protBadgeLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold' },
-  protDesc: { fontSize: 12, color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
-  protFixBtn: { marginTop: 12, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  protFixBtnText: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: '#FFF' },
-
-  // Ask toggle
-  askToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: BORDER },
-  askToggleText: { fontSize: 15, fontFamily: 'Manrope_700Bold', color: TXT1 },
+  // Protection checklist
+  protectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
+  protectionRow: { paddingVertical: 12 },
+  protectionName: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  protectionBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  protectionBadgeTxt: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  protectionDetail: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  protectionLabel: { fontSize: 11, color: TXT3, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', width: 40 },
+  protectionValue: { fontSize: 13, color: TXT1, fontFamily: 'Manrope_400Regular', flex: 1 },
+  protectionAction: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
 
   // Chat
+  chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderRadius: 16, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, padding: 16, borderWidth: 1, borderBottomWidth: 0, borderColor: BORDER },
+  chatHeaderText: { fontSize: 15, fontFamily: 'Manrope_700Bold', color: TXT1 },
   chatContainer: { backgroundColor: '#FFF', borderRadius: 16, borderTopLeftRadius: 0, borderTopRightRadius: 0, padding: 12, borderWidth: 1, borderTopWidth: 0, borderColor: BORDER },
   promptChip: { backgroundColor: BLUE_L, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   promptChipTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: BLUE },
-  chatList: { maxHeight: 280, marginBottom: 8 },
+  chatList: { maxHeight: 320, marginBottom: 8 },
   bubble: { flexDirection: 'row', marginBottom: 8, alignItems: 'flex-end' },
   bubbleUser: { justifyContent: 'flex-end' },
   bubbleAI: { justifyContent: 'flex-start' },
