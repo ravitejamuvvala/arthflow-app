@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-    ActivityIndicator,
-    Animated,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { fetchAiChat } from '../lib/api'
