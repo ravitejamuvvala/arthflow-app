@@ -1,12 +1,19 @@
 import { Manrope_400Regular, Manrope_700Bold } from '@expo-google-fonts/manrope'
 import { NotoSerif_700Bold, useFonts } from '@expo-google-fonts/noto-serif'
 import { Feather } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
 import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
+
+const clearLocalData = async () => {
+  const keys = await AsyncStorage.getAllKeys()
+  const arthKeys = keys.filter(k => k.startsWith('@arthflow_'))
+  if (arthKeys.length) await AsyncStorage.multiRemove(arthKeys)
+}
 
 import AddTransactionScreen from './src/screens/AddTransactionScreen'
 import CoachScreen from './src/screens/CoachScreen'
@@ -55,11 +62,24 @@ export default function App() {
       if (event === 'TOKEN_REFRESHED' && !session) {
         // Refresh token was invalid — force sign out
         supabase.auth.signOut()
+        clearLocalData()
         setSession(null)
         setIsOnboarded(null)
+      } else if (event === 'SIGNED_OUT') {
+        clearLocalData()
+        setSession(null)
+        setIsOnboarded(null)
+      } else if (event === 'SIGNED_IN') {
+        // New login/signup — clear any stale local data from previous user
+        clearLocalData()
+        setSession(session)
+        setActiveTab('home')
       } else {
         setSession(session)
-        if (!session) setIsOnboarded(null)
+        if (!session) {
+          clearLocalData()
+          setIsOnboarded(null)
+        }
       }
       setAuthLoading(false)
     })
@@ -114,7 +134,7 @@ export default function App() {
   if (isOnboarded === false) {
     return (
       <SafeAreaView style={styles.container}>
-        <OnboardingScreen onComplete={() => setIsOnboarded(true)} />
+        <OnboardingScreen onComplete={() => { clearLocalData(); setActiveTab('home'); setIsOnboarded(true) }} />
       </SafeAreaView>
     )
   }
@@ -142,7 +162,13 @@ export default function App() {
           <TouchableOpacity
             key={tab.key}
             style={styles.tab}
-            onPress={() => setActiveTab(tab.key)}
+            onPress={() => {
+              if (tab.key === 'home' && activeTab !== 'home') {
+                // Coming back to Home — mark report stale so user sees refresh prompt
+                setRefreshKey(k => k + 1)
+              }
+              setActiveTab(tab.key)
+            }}
           >
             {activeTab === tab.key && <View style={styles.tabPill} />}
             <Feather name={tab.icon} size={20} color={activeTab === tab.key ? '#1E3A8A' : '#9CA3AF'} style={{ zIndex: 1, marginBottom: 3 }} />

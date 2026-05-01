@@ -6,7 +6,7 @@ import { generateInsights } from './insights'
 import { getStatus } from './status'
 
 export function runEngine({ income, transactions, goals, assets, age, profile }) {
-  const flow = getMoneyFlow(transactions, income)
+  const flow = getMoneyFlow(transactions, income, profile)
 
   // Emergency fund calculation
   const liquidCash = assets?.liquidCash || 0
