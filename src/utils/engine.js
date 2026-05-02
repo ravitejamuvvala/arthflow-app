@@ -51,6 +51,8 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const liquidCash = assets?.liquidCash || 0
   const monthlyExpenses = flow.totalSpent || (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
   const emergencyMonths = monthlyExpenses > 0 ? +(liquidCash / monthlyExpenses).toFixed(1) : 0
+  const emergencyTarget = monthlyExpenses * 6
+  const emergencyGap = Math.max(0, emergencyTarget - liquidCash)
 
   // Goal funding average (skip goals with no target set)
   const configuredGoals = goals.filter(g => g.target_amount > 0)
@@ -70,14 +72,20 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const topProblem = topInsights[0]?.type !== 'positive' ? topInsights[0]?.title : null
   const action = topInsights[0]?.action || null
 
-  // ─── Investment allocation (age-based) ────────────────────
+  // ─── Investment allocation (age-based, emergency-first) ──
   const equityPct = Math.min(80, 100 - (age || 25))
   const debtPct = 100 - equityPct
-  const suggestedSip = flow.savings > 0 ? Math.round(flow.savings * 0.6) : 0
+  // Prioritise emergency fund: set aside up to 50% of savings or 1/6th of gap
+  const emergencyContribution = emergencyGap > 0 && flow.savings > 0
+    ? Math.round(Math.min(flow.savings * 0.5, emergencyGap / 6))
+    : 0
+  const investableSurplus = Math.max(0, flow.savings - emergencyContribution)
+  const suggestedSip = Math.round(investableSurplus * 0.6)
   const investment = {
     equityPct,
     debtPct,
     suggestedSip,
+    emergencyContribution,
     allocation: {
       largeCap: Math.round(suggestedSip * 0.60),
       midSmallCap: Math.round(suggestedSip * 0.25),
@@ -120,8 +128,8 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const healthInsuranceNeeded = age < 35 ? 1000000 : age < 50 ? 2500000 : 5000000 // ₹10L / ₹25L / ₹50L
   const risk = {
     emergencyMonths,
-    emergencyTarget: monthlyExpenses * 6,
-    emergencyGap: Math.max(0, monthlyExpenses * 6 - liquidCash),
+    emergencyTarget,
+    emergencyGap,
     termInsuranceNeeded,
     healthInsuranceNeeded,
     hasInsurance: !!assets?.hasInsurance,
