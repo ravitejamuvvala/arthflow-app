@@ -281,14 +281,21 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add(`  Target: 6 months (${fmtInr(emergencyTarget)})`)
   add(`  Status: ${emergencyMonths >= 6 ? 'Covered' : emergencyMonths >= 3 ? 'Partial — keep building' : 'Critical — top priority'}`)
   blank()
-  const termCover = riskData?.termInsuranceNeeded ?? income * 12 * 15
-  add(`• Term Life Insurance:`)
-  add(`  Recommended Cover: ${fmtInr(termCover)} (15× annual income)`)
-  add(`  Compare plans online for the best rates at age ${age}`)
+  const termCover = riskData?.termInsuranceNeeded ?? Math.max(0, income * 12 * Math.max(1, 60 - (age || 25)))
+  const termBreakdown = riskData?.termBreakdown
+  add(`• Term Life Insurance (needs-based estimate):`)
+  add(`  Estimated Cover: ${fmtInr(termCover)}`)
+  if (termBreakdown) {
+    add(`  Breakdown: Income replacement ${fmtInr(termBreakdown.incomeReplacement)} + Liabilities ${fmtInr(termBreakdown.liabilities)} − Assets ${fmtInr(termBreakdown.existingAssets)}`)
+  }
+  add(`  ⚠️ This estimate does not account for dependents, existing policies, or health factors`)
+  add(`  Consult a qualified insurance advisor for your actual coverage need`)
   blank()
-  add(`• Health Insurance:`)
-  add(`  Common benchmark: ₹10-25L family floater coverage`)
-  add(`  Compare plans on aggregator sites for your age group`)
+  const healthRange = riskData?.healthInsuranceRange?.label ?? (age < 35 ? '₹5-15L' : age < 50 ? '₹10-25L' : '₹15-50L')
+  add(`• Health Insurance (benchmark range):`)
+  add(`  Common range for age ${age}: ${healthRange} family floater`)
+  add(`  Actual need depends on city, family size, pre-existing conditions`)
+  add(`  Compare plans on aggregator sites — do not rely on this estimate alone`)
   blank()
 
   // 7. 12-Month Action Plan

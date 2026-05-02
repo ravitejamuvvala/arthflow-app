@@ -124,14 +124,34 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
 
   // ─── Risk assessment ──────────────────────────────────────
   const annualIncome = (flow.income || profile?.monthly_income || 0) * 12
-  const termInsuranceNeeded = annualIncome * 15
-  const healthInsuranceNeeded = age < 35 ? 1000000 : age < 50 ? 2500000 : 5000000 // ₹10L / ₹25L / ₹50L
+  const yearsToRetirement = Math.max(1, 60 - (age || 25))
+  const emiOutstanding = (flow.catTotals?.emis ?? 0) * 60 // Conservative 5-year liability estimate
+
+  // Needs-based term insurance: income replacement + outstanding liabilities − existing assets
+  const termInsuranceNeeded = Math.max(0,
+    annualIncome * yearsToRetirement + emiOutstanding - netWorth
+  )
+
+  // Health insurance: honest benchmark ranges (cannot personalize without health/city/family data)
+  const healthInsuranceRange = age < 35
+    ? { min: 500000, max: 1500000, label: '₹5-15L' }
+    : age < 50
+    ? { min: 1000000, max: 2500000, label: '₹10-25L' }
+    : { min: 1500000, max: 5000000, label: '₹15-50L' }
+
   const risk = {
     emergencyMonths,
     emergencyTarget,
     emergencyGap,
     termInsuranceNeeded,
-    healthInsuranceNeeded,
+    termConfidence: 'estimated', // Uses income, liabilities, assets — but not dependents/existing cover
+    termBreakdown: {
+      incomeReplacement: annualIncome * yearsToRetirement,
+      liabilities: emiOutstanding,
+      existingAssets: netWorth,
+    },
+    healthInsuranceRange,
+    healthConfidence: 'benchmark', // Industry norms by age — no health/city/family data
     hasInsurance: !!assets?.hasInsurance,
     riskLevel: emergencyMonths >= 6 && score >= 60 ? 'low' : emergencyMonths >= 3 ? 'medium' : 'high',
   }

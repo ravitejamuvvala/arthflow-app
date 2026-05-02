@@ -100,7 +100,8 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
   const savingsGap = Math.round(income * 0.20 - saved)
   const emergencyTarget = risk?.emergencyTarget ?? totalExp * 6
   const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.flow?.income ?? 0))
-  const termCover = risk?.termInsuranceNeeded ?? monthlyIncome * 12 * 15
+  const yearsToRetirement = Math.max(1, 60 - (age || 25))
+  const termCover = risk?.termInsuranceNeeded ?? Math.max(0, monthlyIncome * 12 * yearsToRetirement - (engineResult?.assetAnalysis?.netWorth ?? 0))
   const eqPct = investment?.equityPct ?? Math.min(80, 100 - age)
   const sipAmt = investment?.suggestedSip ?? Math.round(saved * 0.6)
 
@@ -125,7 +126,8 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 
   // --- Insurance / protection ---
   if (lc.includes('insurance') || lc.includes('protect') || lc.includes('health insurance') || lc.includes('term') || lc.includes('cover')) {
-    return `${name}, here's your insurance roadmap for age ${age}:\n\n🏥 Health Insurance:\n• A common benchmark is ₹10L+ family floater coverage\n• Consider adding a super top-up for higher coverage\n\n❤️ Term Life Insurance:\n• Recommended cover: ${fmtInr(termCover)} (15× annual income)\n• Online term plans are generally more affordable than offline\n\nTotal budget: many planners suggest under ${fmtInr(Math.round(monthlyIncome * 0.05))}/month (5% of income). Compare plans on aggregator sites.`
+    const healthRange = risk?.healthInsuranceRange?.label ?? (age < 35 ? '₹5-15L' : age < 50 ? '₹10-25L' : '₹15-50L')
+    return `${name}, here's your insurance roadmap for age ${age}:\n\n❤️ Term Life Insurance (needs-based estimate):\n• Estimated cover: ${fmtInr(termCover)}\n• Formula: income replacement (${yearsToRetirement}yr to retirement) + liabilities − existing assets\n• This is an estimate — actual need depends on dependents, existing policies, and lifestyle\n\n🏥 Health Insurance (benchmark range):\n• Common range for your age: ${healthRange} family floater\n• Actual need varies by city, family size, and health history\n• Consider adding a super top-up for catastrophic coverage\n\n⚠️ Both estimates are directional only — consult a qualified insurance advisor for exact coverage. Compare plans on aggregator sites.`
   }
 
   // --- SIP / investing ---
@@ -709,17 +711,18 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
               icon: '❤️',
               status: 'missing',
               label: 'Term life insurance',
-              detail: `Consider ${fmtInr(rk.termInsuranceNeeded)} cover (15× annual income) — ~₹700–900/mo`,
+              detail: `Needs-based estimate: ${fmtInr(rk.termInsuranceNeeded)} cover — consult an advisor for exact amount`,
             })
           }
 
           // Health insurance gap
           if (!rk.hasInsurance && (profile?.age ?? 0) >= 22) {
+            const healthRange = rk.healthInsuranceRange?.label ?? '₹10-25L'
             gaps.push({
               icon: '🏥',
               status: 'missing',
               label: 'Health insurance',
-              detail: `₹${((rk.healthInsuranceNeeded || 0) / 100000).toFixed(0)}L family floater recommended — ~₹700–1,000/mo`,
+              detail: `Common benchmark: ${healthRange} family floater for your age — actual need varies`,
             })
           }
 
