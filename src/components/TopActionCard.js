@@ -26,7 +26,25 @@ export default function TopActionCard({ topAction, onPress }) {
       <Text style={s.subtitle}>{topAction.subtitle}</Text>
 
       {/* Impact line */}
-      <Text style={s.impact}>{topAction.impact}</Text>
+      <Text style={s.impact}>👉 {topAction.impact}</Text>
+
+      {/* Outcome line */}
+      {topAction.outcome ? (
+        <View style={s.outcomeRow}>
+          <Text style={s.outcomeIcon}>📈</Text>
+          <Text style={[s.outcomeText, { color: sev.accent }]}>
+            Outcome: <Text style={s.outcomeValue}>{topAction.outcome}</Text>
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Confidence signal */}
+      {topAction.confidence ? (
+        <View style={s.confidenceRow}>
+          <Text style={s.confidenceIcon}>🟢</Text>
+          <Text style={s.confidenceText}>{topAction.confidence}</Text>
+        </View>
+      ) : null}
 
       {/* CTA Button */}
       <TouchableOpacity
@@ -71,13 +89,48 @@ const s = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#374151',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   impact: {
     fontSize: 13,
+    color: '#374151',
+    marginBottom: 10,
+  },
+  outcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFFFF80',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
+  },
+  outcomeIcon: {
+    fontSize: 13,
+    marginRight: 8,
+    marginTop: 1,
+  },
+  outcomeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+  },
+  outcomeValue: {
+    fontWeight: '400',
+  },
+  confidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingHorizontal: 4,
+  },
+  confidenceIcon: {
+    fontSize: 10,
+    marginRight: 6,
+  },
+  confidenceText: {
+    fontSize: 12,
     color: '#6B7280',
     fontStyle: 'italic',
-    marginBottom: 14,
   },
   cta: {
     flexDirection: 'row',

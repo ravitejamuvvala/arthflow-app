@@ -15,6 +15,7 @@ import {
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import MoneyStoryCard from '../components/MoneyStoryCard'
+import TopActionCard from '../components/TopActionCard'
 import { fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'

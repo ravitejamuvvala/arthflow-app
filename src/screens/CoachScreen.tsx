@@ -172,7 +172,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const [chatInput, setChatInput] = useState('')
   const [typing, setTyping] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const chatScroll = useRef<ScrollView>(null)
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false)  const chatScroll = useRef<ScrollView>(null)
   const mainScroll = useRef<ScrollView>(null)
 
   // Typing dots
@@ -226,7 +226,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 0, profile: p })
       setEngineResult(result)
 
-      // Load AI report from cache, or fetch fresh if missing/stale
+      // Load AI report from cache
       let reportLoaded = false
       try {
         const raw = await AsyncStorage.getItem('@arthflow_ai_report')
@@ -239,7 +239,11 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         }
       } catch {}
 
-      // If no cached report, fetch fresh
+      // Show screen immediately — fetch AI report in background
+      setLoading(false)
+      setRefreshing(false)
+
+      // If no cached report, fetch fresh (non-blocking)
       if (!reportLoaded && p) {
         try {
           const income = baseIncome || p?.monthly_income || 0
@@ -278,7 +282,6 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       }
     } catch (e) {
       console.error('CoachScreen loadData error:', e)
-    } finally {
       setLoading(false)
       setRefreshing(false)
     }
@@ -493,44 +496,14 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           </View>
         </View>
 
-        {/* ══ 2. TOP PROBLEMS ════════════════════════════════ */}
-        {appReport?.top_problems && appReport.top_problems.length > 0 && (
-          <View>
-            <View style={s.sectionRow}>
-              <Text style={{ fontSize: 15 }}>🚨</Text>
-              <Text style={s.sectionTitle}>Top Problems</Text>
-              <View style={s.countBadge}>
-                <Text style={s.countTxt}>{appReport.top_problems.length}</Text>
-              </View>
-            </View>
-            {appReport.top_problems.map((p: any, i: number) => {
-              const sevColor = p.severity === 'high' ? RED : p.severity === 'medium' ? ORANGE : TXT2
-              const sevBg = p.severity === 'high' ? RED_L : p.severity === 'medium' ? ORANGE_L : BG_SEC
-              return (
-                <View key={i} style={[s.problemCard, { borderLeftColor: sevColor }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <View style={[s.sevBadge, { backgroundColor: sevBg }]}>
-                      <Text style={[s.sevBadgeTxt, { color: sevColor }]}>
-                        {p.severity === 'high' ? '🔴 HIGH' : p.severity === 'medium' ? '🟡 MEDIUM' : '🔵 LOW'}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={s.problemTitle}>{p.title}</Text>
-                  <Text style={s.problemImpact} numberOfLines={2}>{highlightRupee(p.impact, sevColor, undefined)}</Text>
-                </View>
-              )
-            })}
-          </View>
-        )}
-
-        {/* ══ 3. ACTION PLAN ═════════════════════════════════ */}
+        {/* ══ 1. ACTION PLAN (always visible, max 3) ════════════════ */}
         {appReport?.action_plan && appReport.action_plan.length > 0 && (
           <View style={s.actionCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <Text style={{ fontSize: 15 }}>✅</Text>
               <Text style={s.sectionTitle}>Action Plan</Text>
             </View>
-            {appReport.action_plan.map((a: any, i: number) => {
+            {appReport.action_plan.slice(0, 3).map((a: any, i: number) => {
               const prioColor = a.priority === 'high' ? RED : a.priority === 'medium' ? ORANGE : GREEN
               return (
                 <View key={i} style={s.actionStep}>
@@ -550,109 +523,159 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           </View>
         )}
 
-        {/* ══ 4. QUICK SUMMARY ═══════════════════════════════ */}
-        {appReport?.quick_summary && appReport.quick_summary.length > 0 && (
-          <View style={s.summaryCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Text style={{ fontSize: 15 }}>📊</Text>
-              <Text style={s.sectionTitle}>Quick Summary</Text>
-            </View>
-            {appReport.quick_summary.map((item: string, i: number) => (
-              <View key={i} style={s.summaryRow}>
-                <Text style={s.summaryBullet}>•</Text>
-                {highlightRupee(item, BLUE, s.summaryText)}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ══ 5. COLLAPSIBLE DETAILED SECTIONS ═══════════════ */}
-        {appReport?.collapsible_sections && appReport.collapsible_sections.length > 0 && (
+        {/* ══ 2. TOP PROBLEMS (always visible, max 3) ═══════════════ */}
+        {appReport?.top_problems && appReport.top_problems.length > 0 && (
           <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Text style={{ fontSize: 15 }}>🔍</Text>
-              <Text style={s.sectionTitle}>Detailed Analysis</Text>
-            </View>
-            {appReport.collapsible_sections.map((sec: any) => (
-              <View key={sec.id} style={s.collapseCard}>
-                <TouchableOpacity
-                  style={s.collapseHeader}
-                  onPress={() => toggleSection(sec.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={s.sectionIconWrap}>
-                    <Text style={{ fontSize: 16 }}>{sec.icon}</Text>
-                  </View>
-                  <Text style={s.collapseTitle}>{sec.title}</Text>
-                  <Text style={s.collapseArrow}>{expanded[sec.id] ? '▲' : '▼'}</Text>
-                </TouchableOpacity>
-                {expanded[sec.id] && (
-                  <View style={s.collapseBody}>
-                    {sec.items?.map((item: string, j: number) => (
-                      <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
-                        <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
-                        <Text style={s.sectionItemText} numberOfLines={2}>{highlightRupee(item, BLUE, undefined)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ══ PROTECTION CHECKLIST ═══════════════════════════ */}
-        {appReport?.protectionChecklist?.length > 0 && (
-          <View style={s.protectionCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={{ fontSize: 18 }}>🛡️</Text>
-              </View>
-              <View>
-                <Text style={s.sectionCardTitle}>Protection Checklist</Text>
-                <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+            <View style={s.sectionRow}>
+              <Text style={{ fontSize: 15 }}>🚨</Text>
+              <Text style={s.sectionTitle}>Top Problems</Text>
+              <View style={s.countBadge}>
+                <Text style={s.countTxt}>{Math.min(appReport.top_problems.length, 3)}</Text>
               </View>
             </View>
-            {appReport.protectionChecklist.map((p: any, i: number) => {
-              const pStatusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
-              const pStatusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
-              const pStatusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
+            {appReport.top_problems.slice(0, 3).map((p: any, i: number) => {
+              const sevColor = p.severity === 'high' ? RED : p.severity === 'medium' ? ORANGE : TXT2
+              const sevBg = p.severity === 'high' ? RED_L : p.severity === 'medium' ? ORANGE_L : BG_SEC
               return (
-                <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <Text style={{ fontSize: 16 }}>{p.icon}</Text>
-                    <Text style={s.protectionName}>{p.item}</Text>
-                    <View style={[s.protectionBadge, { backgroundColor: pStatusBg }]}>
-                      <Text style={[s.protectionBadgeTxt, { color: pStatusColor }]}>{pStatusLabel}</Text>
+                <View key={i} style={[s.problemCard, { borderLeftColor: sevColor }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <View style={[s.sevBadge, { backgroundColor: sevBg }]}>
+                      <Text style={[s.sevBadgeTxt, { color: sevColor }]}>
+                        {p.severity === 'high' ? '🔴 HIGH' : p.severity === 'medium' ? '🟡 MEDIUM' : '🔵 LOW'}
+                      </Text>
                     </View>
                   </View>
-                  <View style={{ paddingLeft: 30 }}>
-                    <View style={s.protectionDetail}>
-                      <Text style={s.protectionLabel}>Have</Text>
-                      <Text style={s.protectionValue}>{p.have}</Text>
-                    </View>
-                    <View style={s.protectionDetail}>
-                      <Text style={s.protectionLabel}>Need</Text>
-                      <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
-                    </View>
-                    {p.action && (
-                      <View style={[s.protectionAction, { backgroundColor: pStatusBg }]}>
-                        <Text style={{ fontSize: 12, color: pStatusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Text style={s.problemTitle}>{p.title}</Text>
+                  <Text style={s.problemImpact} numberOfLines={2}>{highlightRupee(p.impact, sevColor, undefined)}</Text>
                 </View>
               )
             })}
           </View>
         )}
 
-        {/* ══ WHAT-IF SIMULATOR ═════════════════════════ */}
-        <WhatIfSimulator
-          goals={goals}
-          currentSavings={flow?.savings ?? 0}
-          income={flow?.income ?? 0}
-        />
+        {/* ══ VIEW FULL ANALYSIS TOGGLE ═════════════════════ */}
+        <TouchableOpacity
+          style={s.fullAnalysisBtn}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+            setShowFullAnalysis(prev => !prev)
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={s.fullAnalysisTxt}>
+            {showFullAnalysis ? 'Hide Full Analysis' : 'View Full Analysis'}
+          </Text>
+          <Text style={s.fullAnalysisArrow}>{showFullAnalysis ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+
+        {/* ══ HIDDEN SECTIONS (expanded on toggle) ══════════ */}
+        {showFullAnalysis && (
+          <View>
+            {/* ── Quick Summary ── */}
+            {appReport?.quick_summary && appReport.quick_summary.length > 0 && (
+              <View style={s.summaryCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 15 }}>📊</Text>
+                  <Text style={s.sectionTitle}>Quick Summary</Text>
+                </View>
+                {appReport.quick_summary.map((item: string, i: number) => (
+                  <View key={i} style={s.summaryRow}>
+                    <Text style={s.summaryBullet}>•</Text>
+                    {highlightRupee(item, BLUE, s.summaryText)}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* ── Collapsible Detailed Sections ── */}
+            {appReport?.collapsible_sections && appReport.collapsible_sections.length > 0 && (
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <Text style={{ fontSize: 15 }}>🔍</Text>
+                  <Text style={s.sectionTitle}>Detailed Analysis</Text>
+                </View>
+                {appReport.collapsible_sections.map((sec: any) => (
+                  <View key={sec.id} style={s.collapseCard}>
+                    <TouchableOpacity
+                      style={s.collapseHeader}
+                      onPress={() => toggleSection(sec.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={s.sectionIconWrap}>
+                        <Text style={{ fontSize: 16 }}>{sec.icon}</Text>
+                      </View>
+                      <Text style={s.collapseTitle}>{sec.title}</Text>
+                      <Text style={s.collapseArrow}>{expanded[sec.id] ? '▲' : '▼'}</Text>
+                    </TouchableOpacity>
+                    {expanded[sec.id] && (
+                      <View style={s.collapseBody}>
+                        {sec.items?.map((item: string, j: number) => (
+                          <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+                            <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
+                            <Text style={s.sectionItemText} numberOfLines={2}>{highlightRupee(item, BLUE, undefined)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* ── Protection Checklist ── */}
+            {appReport?.protectionChecklist?.length > 0 && (
+              <View style={s.protectionCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Text style={{ fontSize: 18 }}>🛡️</Text>
+                  </View>
+                  <View>
+                    <Text style={s.sectionCardTitle}>Protection Checklist</Text>
+                    <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+                  </View>
+                </View>
+                {appReport.protectionChecklist.map((p: any, i: number) => {
+                  const pStatusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
+                  const pStatusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
+                  const pStatusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
+                  return (
+                    <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        <Text style={{ fontSize: 16 }}>{p.icon}</Text>
+                        <Text style={s.protectionName}>{p.item}</Text>
+                        <View style={[s.protectionBadge, { backgroundColor: pStatusBg }]}>
+                          <Text style={[s.protectionBadgeTxt, { color: pStatusColor }]}>{pStatusLabel}</Text>
+                        </View>
+                      </View>
+                      <View style={{ paddingLeft: 30 }}>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Have</Text>
+                          <Text style={s.protectionValue}>{p.have}</Text>
+                        </View>
+                        <View style={s.protectionDetail}>
+                          <Text style={s.protectionLabel}>Need</Text>
+                          <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
+                        </View>
+                        {p.action && (
+                          <View style={[s.protectionAction, { backgroundColor: pStatusBg }]}>
+                            <Text style={{ fontSize: 12, color: pStatusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+            )}
+
+            {/* ── What-If Simulator ── */}
+            <WhatIfSimulator
+              goals={goals}
+              currentSavings={flow?.savings ?? 0}
+              income={flow?.income ?? 0}
+            />
+          </View>
+        )}
 
         {/* ══ DOWNLOAD REPORT ═══════════════════════════════ */}
         <View style={s.downloadCard}>
@@ -797,6 +820,11 @@ const s = StyleSheet.create({
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 6, alignItems: 'flex-start' },
   summaryBullet: { fontSize: 14, color: BLUE, fontWeight: '700', marginTop: 1 },
   summaryText: { fontSize: 14, color: TXT1, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
+
+  // Full Analysis toggle
+  fullAnalysisBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE_L, borderRadius: 14, paddingVertical: 14, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '20' },
+  fullAnalysisTxt: { fontSize: 15, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  fullAnalysisArrow: { fontSize: 12, color: BLUE },
 
   // Collapsible sections
   collapseCard: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },

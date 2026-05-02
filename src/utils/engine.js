@@ -60,6 +60,8 @@ export function getTopAction(engineResult) {
   if (emergencyMonths < 3 && monthlyExpenses > 0) {
     const targetMonths = 6
     const monthlyTarget = Math.ceil(monthlyExpenses * 0.25) // suggest 25% of expenses
+    const needed = Math.max(0, (targetMonths - emergencyMonths) * monthlyExpenses)
+    const monthsToTarget = monthlyTarget > 0 ? Math.ceil(needed / monthlyTarget) : 0
     const coverText = emergencyMonths === 0
       ? 'You have 0 months covered'
       : `You have ${emergencyMonths} month${emergencyMonths !== 1 ? 's' : ''} covered`
@@ -69,6 +71,10 @@ export function getTopAction(engineResult) {
       title: 'Build Emergency Fund',
       subtitle: coverText,
       impact: 'This stabilizes your finances in 6 months',
+      outcome: monthsToTarget > 0
+        ? `You'll reach 6-month safety in ${monthsToTarget} months`
+        : `You'll have full emergency cover`,
+      confidence: 'Based on your income & monthly expenses',
       ctaLabel: `Start ${fmtInr(monthlyTarget)}/month`,
       ctaAmount: monthlyTarget,
     }
@@ -77,12 +83,15 @@ export function getTopAction(engineResult) {
   // Priority 2: Savings < 20%
   if (savingsPct < 20 && income > 0) {
     const gap = Math.round(income * 0.20 - flow.savings)
+    const yearlyExtra = gap * 12
     return {
       key: 'savings',
       severity: savingsPct < 10 ? 'urgent' : 'warning',
       title: 'Boost Your Savings',
       subtitle: `Currently saving ${savingsPct}% — target is 20%`,
       impact: `Finding ${fmtInr(gap)} more per month changes everything`,
+      outcome: `That's ${fmtInr(yearlyExtra)} more saved per year`,
+      confidence: 'Based on your 50-30-20 budget split',
       ctaLabel: `Save ${fmtInr(gap)} more`,
       ctaAmount: gap,
     }
@@ -92,12 +101,19 @@ export function getTopAction(engineResult) {
   const offTrack = (goalCalcs || []).filter(g => g.funded < 0.5 && g.monthlyNeeded > 0)
   if (offTrack.length > 0) {
     const worst = offTrack.sort((a, b) => a.funded - b.funded)[0]
+    const monthsSaved = worst.monthlyNeeded > 0 && worst.remaining > 0
+      ? Math.round(worst.remaining / worst.monthlyNeeded)
+      : 0
     return {
       key: 'goals',
       severity: 'warning',
       title: 'Get Goals Back on Track',
       subtitle: `${offTrack.length} goal${offTrack.length > 1 ? 's' : ''} under 50% funded`,
       impact: `Allocating ${fmtInr(worst.monthlyNeeded)}/month closes the gap`,
+      outcome: monthsSaved > 0
+        ? `Your goal can be fully funded in ${monthsSaved} months`
+        : `Gets your goals back on track`,
+      confidence: 'Based on your goal targets & timeline',
       ctaLabel: `Boost by ${fmtInr(worst.monthlyNeeded)}/month`,
       ctaAmount: worst.monthlyNeeded,
     }
@@ -105,12 +121,17 @@ export function getTopAction(engineResult) {
 
   // Priority 4: Everything good — invest surplus
   const surplus = flow?.savings ?? 0
+  const yearlyCompound = Math.round(surplus * 12 * 0.12) // rough 12% annual return
   return {
     key: 'invest',
     severity: 'good',
     title: 'Invest Your Surplus',
     subtitle: `You have ${fmtInr(surplus)} available this month`,
     impact: 'Put your money to work — even small SIPs compound fast',
+    outcome: yearlyCompound > 0
+      ? `Could grow by ${fmtInr(yearlyCompound)} in the first year`
+      : 'Start a SIP and watch your wealth compound',
+    confidence: 'Based on your monthly surplus',
     ctaLabel: `Invest ${fmtInr(surplus)}`,
     ctaAmount: surplus,
   }
