@@ -427,7 +427,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       )}
 
       {/* ── AI Financial Report (compact dashboard) ──── */}
-      {(reportLoading || aiReport) && (
+      {(reportLoading || aiReport || engineResult) && (
         <TouchableOpacity
           style={s.reportCard}
           onPress={() => onNavigateCoach?.()}
@@ -446,13 +446,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
             >
               <Text style={{ fontSize: 16 }}>{reportLoading ? '⏳' : '🔄'}</Text>
             </TouchableOpacity>
-            {aiReport && (
+            {(aiReport || engineResult) && (
               <View style={[s.reportScoreBadge, {
-                backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : aiReport.score >= 40 ? ORANGE : RED) + '18'
+                backgroundColor: ((aiReport?.score ?? engineResult?.score ?? 50) >= 80 ? GREEN : (aiReport?.score ?? engineResult?.score ?? 50) >= 60 ? ORANGE : (aiReport?.score ?? engineResult?.score ?? 50) >= 40 ? ORANGE : RED) + '18'
               }]}>
                 <Text style={[s.reportScoreText, {
-                  color: aiReport.score >= 80 ? GREEN_H : aiReport.score >= 60 ? ORANGE_H : aiReport.score >= 40 ? ORANGE_H : RED
-                }]}>{aiReport.score}/100</Text>
+                  color: (aiReport?.score ?? engineResult?.score ?? 50) >= 80 ? GREEN_H : (aiReport?.score ?? engineResult?.score ?? 50) >= 60 ? ORANGE_H : (aiReport?.score ?? engineResult?.score ?? 50) >= 40 ? ORANGE_H : RED
+                }]}>{aiReport?.score ?? engineResult?.score ?? '—'}/100</Text>
               </View>
             )}
           </View>
@@ -469,12 +469,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
             </TouchableOpacity>
           )}
 
-          {reportLoading && !aiReport ? (
-            <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
-              <ActivityIndicator color={BLUE} size="small" />
-              <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Analyzing your finances...</Text>
-            </View>
-          ) : aiReport ? (
+          {aiReport ? (
             <>
               <Text style={s.reportSummary}>{aiReport.summary}</Text>
 
@@ -487,6 +482,28 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
                   </View>
                 ))}
               </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>View Full Report</Text>
+                <Text style={{ fontSize: 14, color: BLUE }}>→</Text>
+              </View>
+            </>
+          ) : engineResult ? (
+            <>
+              <Text style={s.reportSummary}>
+                {engineResult.flow?.savingsPct >= 20
+                  ? `Saving ${engineResult.flow.savingsPct}% of income — above the 20% benchmark.`
+                  : engineResult.flow?.income > 0
+                    ? `Saving ${engineResult.flow?.savingsPct ?? 0}% — target is 20%. ${engineResult.emergencyMonths < 3 ? 'Emergency fund needs attention.' : ''}`
+                    : 'Add income and expenses to see your analysis.'}
+              </Text>
+
+              {reportLoading && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: BLUE_L, borderRadius: 10, marginBottom: 8 }}>
+                  <ActivityIndicator color={BLUE} size="small" />
+                  <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: BLUE, flex: 1 }}>Getting detailed AI analysis...</Text>
+                </View>
+              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC }}>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>View Full Report</Text>
@@ -507,13 +524,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 11, color: TXT3, marginBottom: 10 }}>Based on your onboarding budget — add expenses for actuals</Text>
         )}
         {[
-          { label: 'Committed', emoji: '🏦', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
-          { label: 'Lifestyle', emoji: '🌟', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
-          { label: 'Wealth', emoji: '📈', actual: flow.savingsPct, target: budget.savingsTarget, amount: Math.max(0, flow.savings), good: flow.savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
+          { label: 'Bills & Needs', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
+          { label: 'Fun & Wants', sub: 'Dining, shopping, trips', emoji: '🎯', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
+          { label: 'Savings', sub: 'What you keep & grow', emoji: '💰', actual: flow.savingsPct, target: budget.savingsTarget, amount: Math.max(0, flow.savings), good: flow.savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
         ].map(row => {
           const barColor = row.good ? row.okColor : row.badColor
           const budgetAmount = Math.round(flow.income * row.target / 100)
-          const isWealth = row.label === 'Wealth'
+          const isWealth = row.label === 'Savings'
           const overUnder = isWealth
             ? (row.amount >= budgetAmount ? `${fmtInr(row.amount - budgetAmount)} above` : `${fmtInr(budgetAmount - row.amount)} below`)
             : (row.amount <= budgetAmount ? `${fmtInr(budgetAmount - row.amount)} left` : `${fmtInr(row.amount - budgetAmount)} over`)
@@ -522,7 +539,10 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 13 }}>{row.emoji}</Text>
-                  <Text style={s.bpLabel}>{row.label}</Text>
+                  <View>
+                    <Text style={s.bpLabel}>{row.label}</Text>
+                    <Text style={{ fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{row.sub}</Text>
+                  </View>
                 </View>
                 <View style={[s.bpPill, { backgroundColor: barColor + '18' }]}>
                   <Text style={[s.bpPillText, { color: barColor }]}>{row.actual}%{row.good ? ' ✓' : ''}</Text>

@@ -1,20 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -178,6 +178,8 @@ export default function ProfileScreen() {
     setAssets(prev => {
       const next = { ...prev, [key]: val }
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      // Clear cached AI report so Coach/Home screens use fresh asset data
+      AsyncStorage.removeItem('@arthflow_ai_report')
       return next
     })
   }
@@ -324,12 +326,25 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* Allocation bar */}
+        {/* Allocation bar with labels */}
         {nw > 0 && (
-          <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-            {allocSegments.map(seg => (
-              <View key={seg.label} style={{ flex: seg.value / nw, backgroundColor: seg.color, minWidth: 2 }} />
-            ))}
+          <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', height: 14, borderRadius: 7, overflow: 'hidden', marginBottom: 8 }}>
+              {allocSegments.map(seg => (
+                <View key={seg.label} style={{ flex: seg.value / nw, backgroundColor: seg.color, minWidth: 2 }} />
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {allocSegments.map(seg => {
+                const pct = Math.round((seg.value / nw) * 100)
+                return (
+                  <View key={seg.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: seg.color }} />
+                    <Text style={{ fontSize: 11, color: TXT2, fontFamily: 'Manrope_400Regular' }}>{seg.label} {pct}%</Text>
+                  </View>
+                )
+              })}
+            </View>
           </View>
         )}
 
@@ -594,6 +609,8 @@ export default function ProfileScreen() {
                 if (editEmail.trim()) updates.email = editEmail.trim()
                 if (Object.keys(updates).length > 0) {
                   await supabase.from('profiles').update(updates).eq('id', user.id)
+                  // Clear cached AI report so Coach/Home screens use fresh profile data
+                  await AsyncStorage.removeItem('@arthflow_ai_report')
                 }
               }
               setShowEdit(false)

@@ -131,9 +131,11 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
             onFocus={() => { isFocused.current = true }}
             onBlur={onInputSubmit}
             onSubmitEditing={onInputSubmit}
-            keyboardType="numeric"
+            keyboardType="number-pad"
             returnKeyType="done"
             selectTextOnFocus
+            contextMenuHidden
+            autoComplete="off"
           />
           {suffix ? <Text style={[s.sliderInputSuffix, { color }]}>{suffix}</Text> : null}
         </View>
@@ -352,9 +354,11 @@ export default function OnboardingScreen({ onComplete }: Props) {
                     if (!isNaN(parsed)) { const c = Math.max(18, Math.min(70, parsed)); setAge(c); setAgeText(String(c)) }
                     else setAgeText(String(age))
                   }}
-                  keyboardType="numeric"
+                  keyboardType="number-pad"
                   returnKeyType="done"
                   selectTextOnFocus
+                  contextMenuHidden
+                  autoComplete="off"
                 />
                 <Text style={[s.sliderInputSuffix, { color: BLUE }]}>yrs</Text>
               </View>

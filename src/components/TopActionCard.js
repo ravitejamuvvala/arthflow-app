@@ -1,7 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 const SEVERITY_STYLES = {
-  urgent:  { bg: '#FEE2E2', accent: '#EF4444', border: '#FECACA', icon: '🚨' },
+  urgent:  { bg: '#FFF7ED', accent: '#EA580C', border: '#FED7AA', icon: '🚨' },
   warning: { bg: '#FEF3C7', accent: '#D97706', border: '#FDE68A', icon: '⚠️' },
   good:    { bg: '#DCFCE7', accent: '#16A34A', border: '#BBF7D0', icon: '🚀' },
 }

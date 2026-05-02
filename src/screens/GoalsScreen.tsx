@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  PanResponder,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import GoalArc from '../components/GoalArc'
@@ -399,12 +399,12 @@ export default function GoalsScreen() {
 
       {/* ── Goal Add/Edit Sheet ──────────────────────────────────── */}
       <Modal visible={showSheet} transparent animationType="slide" onRequestClose={() => setShowSheet(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
         <View style={styles.sheetOverlay}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowSheet(false)} />
           <View style={styles.sheetContainer}>
             <View style={styles.sheetHandle} />
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>{editGoal ? 'Edit Goal' : 'New Goal'}</Text>
                 <TouchableOpacity onPress={() => setShowSheet(false)}
@@ -440,7 +440,7 @@ export default function GoalsScreen() {
               <View style={styles.currencyRow}>
                 <Text style={styles.currencyPrefix}>₹</Text>
                 <TextInput value={fTarget} onChangeText={setFTarget} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="numeric" style={styles.currencyInput} />
+                  keyboardType="number-pad" style={styles.currencyInput} contextMenuHidden autoComplete="off" />
               </View>
 
               {/* Target Year */}
@@ -474,8 +474,10 @@ export default function GoalsScreen() {
                       if (!isNaN(n) && n >= thisYear && n <= thisYear + 40) setFYear(n)
                       else if (text === '') setFYear(thisYear)
                     }}
-                    keyboardType="numeric"
+                    keyboardType="number-pad"
                     maxLength={4}
+                    contextMenuHidden
+                    autoComplete="off"
                     style={{ fontSize: 18, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold', textAlign: 'center', minWidth: 52, padding: 0 }}
                   />
                 </View>
