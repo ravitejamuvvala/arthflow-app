@@ -428,6 +428,62 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           </View>
         )}
 
+        {/* ══ GOAL FUNDING SNAPSHOT ═════════════════════════ */}
+        {(() => {
+          const ghp = engineResult?.goalHorizonPlan
+          if (!ghp || ghp.goalProjections.length === 0) return null
+          const { totalSipNeeded, monthlySavings, gap, fundedPct, funded, buckets, nearestGoal } = ghp
+          const hasGap = gap > 0
+          return (
+            <View style={[s.goalFundingCard, { borderLeftColor: hasGap ? ORANGE : GREEN }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <Text style={{ fontSize: 15 }}>{hasGap ? '📊' : '✅'}</Text>
+                <Text style={s.sectionTitle}>Goal Funding</Text>
+              </View>
+
+              {/* SIP vs Savings row */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                <View style={{ flex: 1, backgroundColor: BG_SEC, borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, color: TXT3 }}>SIP needed</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: BLUE }}>{fmtInr(totalSipNeeded)}</Text>
+                </View>
+                <View style={{ flex: 1, backgroundColor: hasGap ? RED_L : GREEN_L, borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, color: TXT3 }}>Savings</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: hasGap ? RED : GREEN }}>{fmtInr(monthlySavings)}</Text>
+                </View>
+              </View>
+
+              {/* Funded bar */}
+              <View style={{ height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, marginBottom: 8 }}>
+                <View style={{ height: 6, backgroundColor: hasGap ? ORANGE : GREEN, borderRadius: 3, width: `${Math.min(fundedPct, 100)}%` }} />
+              </View>
+
+              <Text style={{ fontSize: 13, color: hasGap ? ORANGE : GREEN, fontWeight: '600', marginBottom: 6 }}>
+                {funded
+                  ? `Fully funded + ${fmtInr(Math.abs(gap))} surplus`
+                  : `${fundedPct}% funded · ${fmtInr(gap)}/mo gap`}
+              </Text>
+
+              {/* Bucket summary */}
+              {buckets.length > 0 && (
+                <Text style={{ fontSize: 12, color: TXT2, lineHeight: 18 }}>
+                  {buckets.map((b: any) => `${b.emoji} ${b.goals.length} ${b.label.split(' (')[0].toLowerCase()}`).join('  ·  ')}
+                </Text>
+              )}
+
+              {nearestGoal && (
+                <Text style={{ fontSize: 12, color: TXT3, marginTop: 4 }}>
+                  Next up: {nearestGoal.name} in {nearestGoal.yearsLeft}y → {fmtInr(nearestGoal.monthlyNeeded)}/mo SIP
+                </Text>
+              )}
+
+              <Text style={{ fontSize: 11, color: TXT3, marginTop: 8, fontStyle: 'italic' }}>
+                See the Plan tab for detailed instrument breakdown
+              </Text>
+            </View>
+          )
+        })()}
+
         {/* ══ VIEW FULL REPORT ════════════════════════════ */}
         <TouchableOpacity
           style={s.fullAnalysisBtn}
@@ -889,6 +945,7 @@ const s = StyleSheet.create({
 
   // Action Plan
   actionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: GREEN + '30', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  goalFundingCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER, borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   investCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '20', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   assetCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: ORANGE + '25', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   riskCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: RED + '20', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },

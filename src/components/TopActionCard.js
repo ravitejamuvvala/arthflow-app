@@ -1,9 +1,10 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
+// Matches app design tokens — muted accents, white card bg, left accent stripe
 const SEVERITY_STYLES = {
-  urgent:  { bg: '#FFF7ED', accent: '#EA580C', border: '#FED7AA', icon: '🚨' },
-  warning: { bg: '#FEF3C7', accent: '#D97706', border: '#FDE68A', icon: '⚠️' },
-  good:    { bg: '#DCFCE7', accent: '#16A34A', border: '#BBF7D0', icon: '🚀' },
+  urgent:  { accent: '#DC2626', accentLight: '#FEE2E2', icon: '🚨' },
+  warning: { accent: '#D97706', accentLight: '#FEF3C7', icon: '⚠️' },
+  good:    { accent: '#16A34A', accentLight: '#DCFCE7', icon: '🚀' },
 }
 
 export default function TopActionCard({ topAction, onPress }) {
@@ -12,7 +13,7 @@ export default function TopActionCard({ topAction, onPress }) {
   const sev = SEVERITY_STYLES[topAction.severity] || SEVERITY_STYLES.warning
 
   return (
-    <View style={[s.card, { backgroundColor: sev.bg, borderColor: sev.border }]}>
+    <View style={[s.card, { borderLeftColor: sev.accent }]}>
       {/* Header row */}
       <View style={s.headerRow}>
         <Text style={s.icon}>{sev.icon}</Text>
@@ -20,7 +21,7 @@ export default function TopActionCard({ topAction, onPress }) {
       </View>
 
       {/* Title */}
-      <Text style={[s.title, { color: sev.accent }]}>{topAction.title}</Text>
+      <Text style={s.title}>{topAction.title}</Text>
 
       {/* Subtitle */}
       <Text style={s.subtitle}>{topAction.subtitle}</Text>
@@ -30,10 +31,11 @@ export default function TopActionCard({ topAction, onPress }) {
 
       {/* Outcome line */}
       {topAction.outcome ? (
-        <View style={s.outcomeRow}>
+        <View style={[s.outcomeRow, { backgroundColor: sev.accentLight + '80' }]}>
           <Text style={s.outcomeIcon}>📈</Text>
-          <Text style={[s.outcomeText, { color: sev.accent }]}>
-            Outcome: <Text style={s.outcomeValue}>{topAction.outcome}</Text>
+          <Text style={s.outcomeText}>
+            <Text style={{ fontWeight: '700', color: '#111827' }}>Outcome: </Text>
+            <Text style={{ color: '#374151' }}>{topAction.outcome}</Text>
           </Text>
         </View>
       ) : null}
@@ -48,12 +50,12 @@ export default function TopActionCard({ topAction, onPress }) {
 
       {/* CTA Button */}
       <TouchableOpacity
-        style={[s.cta, { backgroundColor: sev.accent }]}
+        style={[s.cta, { backgroundColor: sev.accent + '10', borderColor: sev.accent + '25' }]}
         onPress={onPress}
         activeOpacity={0.85}
       >
-        <Text style={s.ctaText}>{topAction.ctaLabel}</Text>
-        <Text style={s.ctaArrow}>›</Text>
+        <Text style={[s.ctaText, { color: sev.accent }]}>{topAction.ctaLabel}</Text>
+        <Text style={[s.ctaArrow, { color: sev.accent }]}>›</Text>
       </TouchableOpacity>
     </View>
   )
@@ -61,34 +63,43 @@ export default function TopActionCard({ topAction, onPress }) {
 
 const s = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 18,
+    borderColor: '#E5E7EB',
+    borderLeftWidth: 4,
+    padding: 16,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   icon: {
-    fontSize: 14,
+    fontSize: 13,
     marginRight: 6,
   },
   label: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
-    color: '#6B7280',
+    color: '#9CA3AF',
   },
   title: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '800',
-    marginBottom: 4,
+    color: '#111827',
+    marginBottom: 3,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#374151',
+    fontSize: 13,
+    color: '#6B7280',
     marginBottom: 6,
   },
   impact: {
@@ -99,7 +110,6 @@ const s = StyleSheet.create({
   outcomeRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF80',
     borderRadius: 10,
     padding: 10,
     marginBottom: 6,
@@ -111,16 +121,13 @@ const s = StyleSheet.create({
   },
   outcomeText: {
     fontSize: 13,
-    fontWeight: '700',
     flex: 1,
-  },
-  outcomeValue: {
-    fontWeight: '400',
+    lineHeight: 18,
   },
   confidenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
   confidenceIcon: {
@@ -129,7 +136,7 @@ const s = StyleSheet.create({
   },
   confidenceText: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#9CA3AF',
     fontStyle: 'italic',
   },
   cta: {
@@ -137,17 +144,16 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    paddingVertical: 14,
+    borderWidth: 1,
+    paddingVertical: 11,
     paddingHorizontal: 20,
   },
   ctaText: {
-    color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 14,
   },
   ctaArrow: {
-    color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
     marginLeft: 8,
   },

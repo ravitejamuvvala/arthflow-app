@@ -4,6 +4,7 @@ import {
   Alert,
   Dimensions,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
   PanResponder,
   Platform,
@@ -96,7 +97,7 @@ export default function GoalsScreen() {
   const [showSheet, setShowSheet] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
   const [editGoal, setEditGoal] = useState<Goal | null>(null)
-  // expandedId removed — no more projection scenarios on this screen
+  const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
 
   // Form state
   const [fEmoji, setFEmoji] = useState('🎯')
@@ -491,7 +492,14 @@ export default function GoalsScreen() {
                   </View>
 
                   {/* Horizon-based recommendation */}
-                  <View style={[styles.goalAdviceWrap, { borderColor: advice.tagColor + '25' }]}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                      setExpandedGoalId(prev => prev === goal.id ? null : goal.id)
+                    }}
+                    style={[styles.goalAdviceWrap, { borderColor: advice.tagColor + '25' }]}
+                  >
                     {/* SIP amount + horizon tag */}
                     <View style={styles.goalAdviceTop}>
                       <View style={{ flex: 1 }}>
@@ -502,21 +510,25 @@ export default function GoalsScreen() {
                         <Text style={[styles.goalAdviceBadgeText, { color: advice.tagColor }]}>{advice.tag}</Text>
                         <Text style={styles.goalAdviceCagr}>{advice.cagrRange} CAGR</Text>
                       </View>
+                      <Text style={{ fontSize: 12, color: TXT3, marginLeft: 6 }}>{expandedGoalId === goal.id ? '▲' : '▼'}</Text>
                     </View>
 
-                    {/* Instruments */}
-                    <View style={styles.goalAdviceInstruments}>
-                      {advice.instruments.map((inst: any) => (
-                        <View key={inst.label} style={styles.goalAdviceInstRow}>
-                          <View style={[styles.goalAdviceInstDot, { backgroundColor: inst.color }]} />
-                          <Text style={styles.goalAdviceInstLabel}>{inst.label}</Text>
-                          <Text style={[styles.goalAdviceInstPct, { color: inst.color }]}>{inst.pct}%</Text>
+                    {/* Instruments — collapsible */}
+                    {expandedGoalId === goal.id && (
+                      <View>
+                        <View style={styles.goalAdviceInstruments}>
+                          {advice.instruments.map((inst: any) => (
+                            <View key={inst.label} style={styles.goalAdviceInstRow}>
+                              <View style={[styles.goalAdviceInstDot, { backgroundColor: inst.color }]} />
+                              <Text style={styles.goalAdviceInstLabel}>{inst.label}</Text>
+                              <Text style={[styles.goalAdviceInstPct, { color: inst.color }]}>{inst.pct}%</Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
-
-                    <Text style={styles.goalAdviceRationale}>{advice.rationale}</Text>
-                  </View>
+                        <Text style={styles.goalAdviceRationale}>{advice.rationale}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             )

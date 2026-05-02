@@ -45,17 +45,23 @@ const { width: SCREEN_W } = Dimensions.get('window')
 const STORAGE_KEY = '@arthflow_assets'
 
 // ─── Asset Config ───────────────────────────────────────────────────────
+type NumericAssetKey = 'liquidCash' | 'mutualFunds' | 'stocks' | 'epf' | 'ppf' | 'gold' | 'realEstate' | 'other'
 interface AssetPortfolio {
   liquidCash: number; mutualFunds: number; stocks: number; epf: number
   ppf: number; gold: number; realEstate: number; other: number
+  hasTermInsurance?: boolean; termCoverAmount?: number
+  hasHealthInsurance?: boolean; healthCoverAmount?: number
 }
+const NUMERIC_ASSET_KEYS: NumericAssetKey[] = ['liquidCash', 'mutualFunds', 'stocks', 'epf', 'ppf', 'gold', 'realEstate', 'other']
 const defaultAssets: AssetPortfolio = {
   liquidCash: 0, mutualFunds: 0, stocks: 0, epf: 0,
   ppf: 0, gold: 0, realEstate: 0, other: 0,
+  hasTermInsurance: false, termCoverAmount: 0,
+  hasHealthInsurance: false, healthCoverAmount: 0,
 }
 
 interface AssetConfig {
-  key: keyof AssetPortfolio; label: string; subLabel: string
+  key: NumericAssetKey; label: string; subLabel: string
   emoji: string; color: string; bg: string; description: string
 }
 const ASSET_CONFIG: AssetConfig[] = [
@@ -77,14 +83,14 @@ function fmtInr(val: number) {
 }
 
 function totalNetWorth(a: AssetPortfolio): number {
-  return Object.values(a).reduce((s, v) => s + v, 0)
+  return NUMERIC_ASSET_KEYS.reduce((s, k) => s + (a[k] || 0), 0)
 }
 
 // ─── Wealth Insights (dynamic) ──────────────────────────────────────────
 function getWealthInsights(assets: AssetPortfolio, nw: number) {
   if (nw === 0) return []
   const insights: string[] = []
-  const pcts = Object.entries(assets).map(([k, v]) => ({ key: k, pct: nw > 0 ? Math.round((v / nw) * 100) : 0, val: v }))
+  const pcts = NUMERIC_ASSET_KEYS.map(k => ({ key: k, pct: nw > 0 ? Math.round((assets[k] / nw) * 100) : 0, val: assets[k] }))
   const top = pcts.sort((a, b) => b.pct - a.pct)[0]
   if (top && top.pct > 50) {
     const cfg = ASSET_CONFIG.find(c => c.key === top.key)
@@ -379,6 +385,111 @@ export default function ProfileScreen() {
                 <Text style={{ fontSize: 12, fontWeight: '600', color: ORANGE_H, flex: 1, fontFamily: 'Manrope_400Regular' }}>{ins}</Text>
               </View>
             ))}
+          </View>
+        )}
+      </View>
+
+      {/* ─── Protection: Insurance ─── */}
+      <View style={st.card}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 16 }}>🛡️</Text>
+          </View>
+          <Text style={st.cardTitle}>Protection</Text>
+        </View>
+
+        {/* Term Life Insurance */}
+        <View style={{ backgroundColor: BG_SEC, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <Text style={{ fontSize: 18 }}>❤️</Text>
+              <View>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>Term Life Insurance</Text>
+                <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Protects your family</Text>
+              </View>
+            </View>
+            <Switch
+              value={!!assets.hasTermInsurance}
+              onValueChange={(val) => {
+                const next = { ...assets, hasTermInsurance: val, termCoverAmount: val ? assets.termCoverAmount : 0 }
+                setAssets(next)
+                updateAssets(next)
+              }}
+              trackColor={{ false: '#E2E8F0', true: GREEN }}
+              thumbColor="#fff"
+            />
+          </View>
+          {assets.hasTermInsurance && (
+            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>Cover:</Text>
+              <TextInput
+                value={assets.termCoverAmount ? commaFormat(String(assets.termCoverAmount)) : ''}
+                onChangeText={(t) => {
+                  const val = Number(stripCommas(t)) || 0
+                  setAssets(prev => ({ ...prev, termCoverAmount: val }))
+                }}
+                onBlur={() => updateAssets(assets)}
+                placeholder="e.g. 1,00,00,000"
+                placeholderTextColor={TXT3}
+                keyboardType="numeric"
+                style={{ flex: 1, height: 38, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: BORDER, paddingHorizontal: 12, fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}
+              />
+              <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>₹</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Health Insurance */}
+        <View style={{ backgroundColor: BG_SEC, borderRadius: 14, padding: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <Text style={{ fontSize: 18 }}>🏥</Text>
+              <View>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>Health Insurance</Text>
+                <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Covers hospitalisation</Text>
+              </View>
+            </View>
+            <Switch
+              value={!!assets.hasHealthInsurance}
+              onValueChange={(val) => {
+                const next = { ...assets, hasHealthInsurance: val, healthCoverAmount: val ? assets.healthCoverAmount : 0 }
+                setAssets(next)
+                updateAssets(next)
+              }}
+              trackColor={{ false: '#E2E8F0', true: GREEN }}
+              thumbColor="#fff"
+            />
+          </View>
+          {assets.hasHealthInsurance && (
+            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>Cover:</Text>
+              <TextInput
+                value={assets.healthCoverAmount ? commaFormat(String(assets.healthCoverAmount)) : ''}
+                onChangeText={(t) => {
+                  const val = Number(stripCommas(t)) || 0
+                  setAssets(prev => ({ ...prev, healthCoverAmount: val }))
+                }}
+                onBlur={() => updateAssets(assets)}
+                placeholder="e.g. 10,00,000"
+                placeholderTextColor={TXT3}
+                keyboardType="numeric"
+                style={{ flex: 1, height: 38, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: BORDER, paddingHorizontal: 12, fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}
+              />
+              <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>₹</Text>
+            </View>
+          )}
+        </View>
+
+        {(!assets.hasTermInsurance || !assets.hasHealthInsurance) && (
+          <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, padding: 10, backgroundColor: ORANGE_L }}>
+            <Text style={{ fontSize: 12 }}>💡</Text>
+            <Text style={{ fontSize: 12, color: ORANGE_H, fontFamily: 'Manrope_400Regular', flex: 1 }}>
+              {!assets.hasTermInsurance && !assets.hasHealthInsurance
+                ? 'Insurance protects your family and savings from catastrophic events'
+                : !assets.hasTermInsurance
+                ? 'Term insurance is the most cost-effective way to protect your family'
+                : 'One hospital stay without cover can wipe out years of savings'}
+            </Text>
           </View>
         )}
       </View>

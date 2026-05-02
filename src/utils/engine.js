@@ -293,7 +293,12 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     },
     healthInsuranceRange,
     healthConfidence: 'benchmark', // Industry norms by age — no health/city/family data
-    hasInsurance: !!assets?.hasInsurance,
+    hasTermInsurance: !!assets?.hasTermInsurance,
+    termCoverAmount: Number(assets?.termCoverAmount) || 0,
+    hasHealthInsurance: !!assets?.hasHealthInsurance,
+    healthCoverAmount: Number(assets?.healthCoverAmount) || 0,
+    // Legacy — true if either insurance is present
+    hasInsurance: !!(assets?.hasTermInsurance || assets?.hasHealthInsurance || assets?.hasInsurance),
     riskLevel: emergencyMonths >= 6 && score >= 60 ? 'low' : emergencyMonths >= 3 ? 'medium' : 'high',
   }
 
@@ -394,93 +399,193 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
 }
 
 // ─── Top Action Determiner ──────────────────────────────────────────────
-// Returns the single most important action the user should take right now
+// Returns the single most important action the user should take right now.
+// Priority: protect → stabilize → grow (financial planning pyramid)
 
 export function getTopAction(engineResult, age = 25) {
-  const { flow, emergencyMonths, goalCalcs } = engineResult
+  if (!engineResult) return null
+  const {
+    flow, emergencyMonths, debtHealth,
+    goalHorizonPlan, risk,
+  } = engineResult
   const savingsPct = flow?.savingsPct ?? 0
   const monthlyExpenses = flow?.totalSpent ?? 0
   const income = flow?.income ?? 0
+  const savings = flow?.savings ?? 0
   const budget = getBudgetRule(age)
   const savingsTarget = budget.savingsTarget
 
-  // Priority 1: Emergency fund < 3 months
+  // ── P1: Debt crisis (DTI > 40%) ──────────────────────────────
+  if (debtHealth && debtHealth.status === 'danger' && income > 0) {
+    const emiAmt = debtHealth.emiAmount
+    const dti = debtHealth.dtiRatio
+    const targetEmi = Math.round(income * 0.30)
+    const reduceBy = Math.max(0, emiAmt - targetEmi)
+    return {
+      key: 'debt',
+      severity: 'urgent',
+      title: 'Reduce Your Debt Load',
+      subtitle: `EMIs are ${dti}% of income — danger zone (>40%)`,
+      impact: `Reducing EMIs by ${fmtInr(reduceBy)}/mo brings you to a safe 30%`,
+      outcome: `Frees up ${fmtInr(reduceBy)}/mo for savings & goals`,
+      confidence: `Based on ${fmtInr(emiAmt)}/mo in EMIs vs ${fmtInr(income)} income`,
+      ctaLabel: `Cut ${fmtInr(reduceBy)}/mo in EMIs`,
+      ctaAmount: reduceBy,
+    }
+  }
+
+  // ── P2: Term life insurance (age ≥ 25, has income, no cover) ─
+  if (!risk?.hasTermInsurance && age >= 25 && income > 0) {
+    const coverNeeded = risk?.termInsuranceNeeded ?? Math.round(income * 12 * 15)
+    const coverLabel = coverNeeded >= 10000000 ? `${Math.round(coverNeeded / 10000000)}Cr`
+      : coverNeeded >= 100000 ? `${Math.round(coverNeeded / 100000)}L` : fmtInr(coverNeeded)
+    // Approximate premium: ₹600-800/mo per ₹1Cr for age 25-35
+    const approxPremium = Math.round((coverNeeded / 10000000) * 700)
+    return {
+      key: 'term_insurance',
+      severity: 'urgent',
+      title: 'Get Term Life Insurance',
+      subtitle: `No term cover — your family has zero income protection`,
+      impact: `A ₹${coverLabel} cover costs only ~${fmtInr(approxPremium)}/mo at age ${age}`,
+      outcome: `Protects ${Math.round(coverNeeded / (income * 12))} years of income for your family`,
+      confidence: `Estimated from your income, liabilities & assets`,
+      ctaLabel: `Get ₹${coverLabel} cover`,
+      ctaAmount: approxPremium,
+    }
+  }
+
+  // ── P3: Health insurance (age ≥ 22, has income, no cover) ────
+  if (!risk?.hasHealthInsurance && age >= 22 && income > 0) {
+    const range = risk?.healthInsuranceRange ?? { label: '₹5-15L' }
+    return {
+      key: 'health_insurance',
+      severity: 'urgent',
+      title: 'Get Health Insurance',
+      subtitle: `No health cover — one hospitalisation can wipe out savings`,
+      impact: `A ${range.label} family floater costs ₹500-1,500/mo at age ${age}`,
+      outcome: `Protects your emergency fund & savings from medical bills`,
+      confidence: `Benchmark range for age ${age} — consult an advisor for exact cover`,
+      ctaLabel: `Get ${range.label} cover`,
+      ctaAmount: 1000,
+    }
+  }
+
+  // ── P4: Emergency fund < 3 months ────────────────────────────
   if (emergencyMonths < 3 && monthlyExpenses > 0) {
     const targetMonths = 6
-    const monthlyTarget = Math.ceil(monthlyExpenses * 0.25) // suggest 25% of expenses
+    const monthlyTarget = Math.ceil(monthlyExpenses * 0.25)
     const needed = Math.max(0, (targetMonths - emergencyMonths) * monthlyExpenses)
     const monthsToTarget = monthlyTarget > 0 ? Math.ceil(needed / monthlyTarget) : 0
     const coverText = emergencyMonths === 0
-      ? 'You have 0 months covered'
-      : `You have ${emergencyMonths} month${emergencyMonths !== 1 ? 's' : ''} covered`
+      ? 'You have 0 months of expenses covered'
+      : `Only ${emergencyMonths} month${emergencyMonths !== 1 ? 's' : ''} of expenses covered`
     return {
       key: 'emergency',
       severity: 'urgent',
       title: 'Build Emergency Fund',
       subtitle: coverText,
-      impact: 'This stabilizes your finances in 6 months',
+      impact: `Set aside ${fmtInr(monthlyTarget)}/mo in a liquid fund`,
       outcome: monthsToTarget > 0
-        ? `You'll reach 6-month safety in ${monthsToTarget} months`
+        ? `You'll reach 6-month safety net in ${monthsToTarget} months`
         : `You'll have full emergency cover`,
-      confidence: 'Based on your income & monthly expenses',
-      ctaLabel: `Start ${fmtInr(monthlyTarget)}/month`,
+      confidence: `Based on ${fmtInr(monthlyExpenses)}/mo expenses`,
+      ctaLabel: `Start ${fmtInr(monthlyTarget)}/mo`,
       ctaAmount: monthlyTarget,
     }
   }
 
-  // Priority 2: Savings < target
+  // ── P5: Savings below target ─────────────────────────────────
   if (savingsPct < savingsTarget && income > 0) {
-    const gap = Math.round(income * savingsTarget / 100 - flow.savings)
+    const gap = Math.round(income * savingsTarget / 100 - savings)
     const yearlyExtra = gap * 12
+    const lifestyle = flow?.catTotals?.lifestyle ?? 0
+    const lifestylePct = income > 0 ? Math.round((lifestyle / income) * 100) : 0
+    const wantsTarget = budget.wantsTarget ?? 30
+    const lifestyleOver = lifestylePct > wantsTarget
+    const hint = lifestyleOver
+      ? `Lifestyle spending is ${lifestylePct}% (target ${wantsTarget}%) — start there`
+      : `Review your top 2-3 expenses for quick wins`
     return {
       key: 'savings',
       severity: savingsPct < 10 ? 'urgent' : 'warning',
-      title: 'Boost Your Savings',
-      subtitle: `Currently saving ${savingsPct}% — target is ${savingsTarget}%`,
-      impact: `Finding ${fmtInr(gap)} more per month changes everything`,
-      outcome: `That's ${fmtInr(yearlyExtra)} more saved per year`,
-      confidence: `Based on your ${budget.label} budget split`,
-      ctaLabel: `Save ${fmtInr(gap)} more`,
+      title: 'Boost Your Savings Rate',
+      subtitle: `Saving ${savingsPct}% — target is ${savingsTarget}% for your age`,
+      impact: `${hint}`,
+      outcome: `Finding ${fmtInr(gap)}/mo more = ${fmtInr(yearlyExtra)} extra per year`,
+      confidence: `Based on your ${budget.label} budget rule`,
+      ctaLabel: `Save ${fmtInr(gap)} more/mo`,
       ctaAmount: gap,
     }
   }
 
-  // Priority 3: Goals off track
-  const offTrack = (goalCalcs || []).filter(g => g.funded < 0.5 && g.monthlyNeeded > 0)
-  if (offTrack.length > 0) {
-    const worst = offTrack.sort((a, b) => a.funded - b.funded)[0]
-    const monthsSaved = worst.monthlyNeeded > 0 && worst.remaining > 0
-      ? Math.round(worst.remaining / worst.monthlyNeeded)
-      : 0
+  // ── P6: SIP gap — nearest goal focus ─────────────────────────
+  if (goalHorizonPlan && !goalHorizonPlan.funded && goalHorizonPlan.totalSipNeeded > 0) {
+    const { totalSipNeeded, gap, fundedPct, nearestGoal } = goalHorizonPlan
+    if (nearestGoal) {
+      const adv = nearestGoal.advice
+      const instrumentHint = adv?.instruments?.[0]?.label ?? 'SIP'
+      return {
+        key: 'sip_gap',
+        severity: fundedPct < 50 ? 'urgent' : 'warning',
+        title: `Fund "${nearestGoal.name}"`,
+        subtitle: `${nearestGoal.yearsLeft}y away — needs ${fmtInr(nearestGoal.monthlyNeeded)}/mo via ${instrumentHint}`,
+        impact: `Total SIP gap: ${fmtInr(gap)}/mo across all goals`,
+        outcome: `${adv?.tag ?? 'Matched'} strategy · ${adv?.cagrRange ?? ''} expected CAGR`,
+        confidence: `Based on ${nearestGoal.yearsLeft}-year horizon & ${adv?.risk ?? 'matched'} instruments`,
+        ctaLabel: `Start ${fmtInr(nearestGoal.monthlyNeeded)}/mo`,
+        ctaAmount: nearestGoal.monthlyNeeded,
+      }
+    }
     return {
-      key: 'goals',
-      severity: 'warning',
-      title: 'Get Goals Back on Track',
-      subtitle: `${offTrack.length} goal${offTrack.length > 1 ? 's' : ''} under 50% funded`,
-      impact: `Allocating ${fmtInr(worst.monthlyNeeded)}/month closes the gap`,
-      outcome: monthsSaved > 0
-        ? `Your goal can be fully funded in ${monthsSaved} months`
-        : `Gets your goals back on track`,
-      confidence: 'Based on your goal targets & timeline',
-      ctaLabel: `Boost by ${fmtInr(worst.monthlyNeeded)}/month`,
-      ctaAmount: worst.monthlyNeeded,
+      key: 'sip_gap',
+      severity: fundedPct < 50 ? 'urgent' : 'warning',
+      title: 'Close Your SIP Gap',
+      subtitle: `Goals need ${fmtInr(totalSipNeeded)}/mo — you save ${fmtInr(goalHorizonPlan.monthlySavings)}/mo`,
+      impact: `${fmtInr(gap)}/mo gap — start with the nearest-deadline goal`,
+      outcome: 'Head to the Plan tab for per-goal instrument breakdown',
+      confidence: 'Based on goal timelines & horizon-matched returns',
+      ctaLabel: `Bridge ${fmtInr(gap)}/mo`,
+      ctaAmount: gap,
     }
   }
 
-  // Priority 4: Everything good — invest surplus
-  const surplus = flow?.savings ?? 0
-  const yearlyCompound = Math.round(surplus * 12 * 0.12) // rough 12% annual return
+  // ── P7: All good — invest surplus with goal context ──────────
+  const surplus = savings
+  if (goalHorizonPlan && goalHorizonPlan.funded && goalHorizonPlan.totalSipNeeded > 0) {
+    const extraSurplus = Math.max(0, surplus - goalHorizonPlan.totalSipNeeded)
+    const yearlyGrowth = Math.round(extraSurplus * 12 * 0.12)
+    return {
+      key: 'invest_surplus',
+      severity: 'good',
+      title: 'Grow Your Wealth',
+      subtitle: `All goals funded! ${fmtInr(extraSurplus)}/mo surplus after SIPs`,
+      impact: 'Redirect surplus into long-term wealth building',
+      outcome: yearlyGrowth > 0
+        ? `Could compound to ${fmtInr(yearlyGrowth)} extra in year 1`
+        : 'Start a wealth SIP for long-term compounding',
+      confidence: 'All goals on track — surplus verified from your data',
+      ctaLabel: extraSurplus > 0 ? `Invest ${fmtInr(extraSurplus)}/mo` : 'Start Wealth SIP',
+      ctaAmount: extraSurplus,
+    }
+  }
+
+  // Fallback — no goals set
+  const yearlyCompound = Math.round(surplus * 12 * 0.10)
   return {
     key: 'invest',
     severity: 'good',
-    title: 'Invest Your Surplus',
-    subtitle: `You have ${fmtInr(surplus)} available this month`,
-    impact: 'Put your money to work — even small SIPs compound fast',
-    outcome: yearlyCompound > 0
-      ? `Could grow by ${fmtInr(yearlyCompound)} in the first year`
-      : 'Start a SIP and watch your wealth compound',
-    confidence: 'Based on your monthly surplus',
-    ctaLabel: `Invest ${fmtInr(surplus)}`,
+    title: surplus > 0 ? 'Put Your Savings to Work' : 'Set Up Your Goals',
+    subtitle: surplus > 0
+      ? `${fmtInr(surplus)}/mo is sitting idle — make it grow`
+      : 'Add your financial goals to get personalised guidance',
+    impact: surplus > 0
+      ? 'Even a small SIP compounds significantly over time'
+      : 'Goals help ArthFlow calculate exactly how much to invest',
+    outcome: surplus > 0 && yearlyCompound > 0
+      ? `${fmtInr(surplus)}/mo at ~10% could grow by ${fmtInr(yearlyCompound)} in year 1`
+      : 'Head to the Plan tab to add your first goal',
+    confidence: surplus > 0 ? 'Based on your monthly surplus' : '',
+    ctaLabel: surplus > 0 ? `Start ${fmtInr(surplus)}/mo SIP` : 'Set Goals →',
     ctaAmount: surplus,
   }
 }
