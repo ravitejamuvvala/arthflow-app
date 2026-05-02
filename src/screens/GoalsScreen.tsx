@@ -115,8 +115,81 @@ function buildProjection(targetAmount: number, currentSaved: number, targetYear:
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────
+// ─── Exact INR format (₹1,42,000 not ₹1.4L) ───────────────────────────
+function formatINRExact(n: number): string {
+  if (n <= 0) return '₹0'
+  const s = Math.round(n).toString()
+  if (s.length <= 3) return `₹${s}`
+  const last3 = s.slice(-3)
+  const rest = s.slice(0, -3)
+  return `₹${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}`
+}
+
+// ─── Solve: what CAGR do you need if you can only invest `availableSIP`? ─
+function solveRequiredCAGR(configuredGoals: any[], availableSIP: number): number {
+  if (availableSIP <= 0 || configuredGoals.length === 0) return 0
+  // Binary-search for annualRate where sum-of-SIPs(rate) = availableSIP
+  let lo = 0, hi = 0.50 // 0% to 50%
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2
+    const r = mid / 12
+    let totalSip = 0
+    for (const g of configuredGoals) {
+      const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : new Date().getFullYear() + 5
+      const months = monthsUntilYear(targetYear)
+      const remaining = Math.max(0, g.target_amount - g.saved_amount)
+      if (remaining <= 0 || months <= 0) continue
+      totalSip += r > 0 ? remaining * r / (Math.pow(1 + r, months) - 1) : remaining / months
+    }
+    if (totalSip > availableSIP) hi = mid; else lo = mid
+  }
+  return Math.round(((lo + hi) / 2) * 1000) / 10 // e.g. 16.2
+}
+
+// ─── Map required CAGR → asset allocation ────────────────────────────────
+function getAllocation(cagr: number) {
+  if (cagr <= 8) return {
+    tag: 'Conservative', color: GREEN,
+    items: [
+      { label: 'Debt / FD / PPF',       pct: 50, color: '#16A34A' },
+      { label: 'Large-cap equity MF',    pct: 30, color: '#3B82F6' },
+      { label: 'Gold / sovereign gold',  pct: 20, color: '#F59E0B' },
+    ],
+  }
+  if (cagr <= 12) return {
+    tag: 'Balanced', color: TEAL,
+    items: [
+      { label: 'Large-cap equity MF',    pct: 40, color: '#3B82F6' },
+      { label: 'Mid / small-cap MF',     pct: 20, color: '#6366F1' },
+      { label: 'International equity',   pct: 15, color: '#8B5CF6' },
+      { label: 'Debt / bonds',           pct: 15, color: '#16A34A' },
+      { label: 'Gold',                   pct: 10, color: '#F59E0B' },
+    ],
+  }
+  if (cagr <= 16) return {
+    tag: 'Growth', color: INDIGO,
+    items: [
+      { label: 'Large-cap equity MF',    pct: 35, color: '#3B82F6' },
+      { label: 'Mid / small-cap MF',     pct: 25, color: '#6366F1' },
+      { label: 'International equity',   pct: 20, color: '#8B5CF6' },
+      { label: 'Debt / bonds',           pct: 10, color: '#16A34A' },
+      { label: 'Gold / commodity',       pct: 10, color: '#F59E0B' },
+    ],
+  }
+  return {
+    tag: 'Aggressive', color: RED,
+    items: [
+      { label: 'Mid / small-cap MF',     pct: 35, color: '#6366F1' },
+      { label: 'Large-cap equity MF',     pct: 25, color: '#3B82F6' },
+      { label: 'International equity',    pct: 25, color: '#8B5CF6' },
+      { label: 'Sectoral / thematic MF',  pct: 15, color: '#EC4899' },
+    ],
+  }
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────
 export default function GoalsScreen() {
-  const { goals, loading: dataLoading, refreshData } = useAppData()
+  const { goals, engineResult, loading: dataLoading, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
   const [showSheet, setShowSheet] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
@@ -236,7 +309,11 @@ export default function GoalsScreen() {
     const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : thisYear + 5
     const months = monthsUntilYear(targetYear)
     const remaining = Math.max(0, g.target_amount - g.saved_amount)
-    const monthlyNeeded = months > 0 ? Math.ceil(remaining / months) : 0
+    // Use balanced 10% CAGR for monthly SIP estimate
+    const r = 0.10 / 12
+    const monthlyNeeded = remaining <= 0 ? 0 : months > 0
+      ? Math.ceil(remaining * r / (Math.pow(1 + r, months) - 1))
+      : 0
     return { ...g, targetYear, yearsLeft: Math.ceil(months / 12), monthlyNeeded }
   })
   const totalMonthlySIP = goalProjections.reduce((s, g) => s + g.monthlyNeeded, 0)
@@ -296,8 +373,8 @@ export default function GoalsScreen() {
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
                 {totalMonthlySIP > 0 && (
                   <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: 10 }}>
-                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular' }}>Monthly SIP needed</Text>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 2 }}>{formatINR(totalMonthlySIP)}/mo</Text>
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular' }}>SIP needed (10% CAGR)</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 2 }}>{formatINRExact(totalMonthlySIP)}/mo</Text>
                   </View>
                 )}
                 {nearestGoal && (
@@ -317,6 +394,99 @@ export default function GoalsScreen() {
             </View>
           </View>
         )}
+
+        {/* ── Plan vs Reality Card ───────────────────────────────── */}
+        {configuredGoals.length > 0 && totalMonthlySIP > 0 && (() => {
+          const monthlySavings = engineResult?.flow?.savings ?? 0
+          const gap = totalMonthlySIP - monthlySavings
+          const fundedPct = monthlySavings > 0 ? Math.min(100, Math.round((monthlySavings / totalMonthlySIP) * 100)) : 0
+          const hasGap = gap > 0
+          const requiredCAGR = hasGap ? solveRequiredCAGR(configuredGoals, monthlySavings) : 10
+          const allocation = getAllocation(requiredCAGR)
+          const isAggressive = requiredCAGR > 15
+
+          return (
+            <View style={styles.realityCard}>
+              {/* Header */}
+              <View style={styles.realityHeader}>
+                <Text style={styles.realityIcon}>{hasGap ? '📊' : '✅'}</Text>
+                <Text style={styles.realityTitle}>{hasGap ? 'PLAN vs REALITY' : 'FULLY FUNDED'}</Text>
+              </View>
+
+              {/* SIP needed vs savings comparison */}
+              <View style={styles.realityCompareRow}>
+                <View style={styles.realityCompareItem}>
+                  <Text style={styles.realityCompareLabel}>SIP needed</Text>
+                  <Text style={styles.realityCompareValue}>{formatINRExact(totalMonthlySIP)}</Text>
+                </View>
+                <View style={[styles.realityCompareItem, { backgroundColor: hasGap ? '#FEF2F2' : '#F0FDF4' }]}>
+                  <Text style={styles.realityCompareLabel}>Your savings</Text>
+                  <Text style={[styles.realityCompareValue, { color: hasGap ? RED : GREEN_H }]}>{formatINRExact(monthlySavings)}</Text>
+                </View>
+                <View style={styles.realityCompareItem}>
+                  <Text style={styles.realityCompareLabel}>{hasGap ? 'Gap' : 'Surplus'}</Text>
+                  <Text style={[styles.realityCompareValue, { color: hasGap ? RED : GREEN_H }]}>{formatINRExact(Math.abs(gap))}</Text>
+                </View>
+              </View>
+
+              {/* Funding progress bar */}
+              <View style={styles.realityBarWrap}>
+                <View style={styles.realityBarTrack}>
+                  <View style={[styles.realityBarFill, { width: `${fundedPct}%`, backgroundColor: hasGap ? ORANGE : GREEN }]} />
+                </View>
+                <Text style={[styles.realityBarLabel, { color: hasGap ? ORANGE_H : GREEN_H }]}>{fundedPct}% funded</Text>
+              </View>
+
+              {/* Divider */}
+              <View style={styles.realityDivider} />
+
+              {hasGap ? (
+                <>
+                  {/* What-if heading */}
+                  <Text style={styles.realityWhatIf}>What if you invest {formatINRExact(monthlySavings)}/mo?</Text>
+                  <Text style={styles.realityCagrNote}>
+                    You'd need ~{requiredCAGR}% CAGR to reach all goals
+                  </Text>
+
+                  {/* Aggressive warning */}
+                  {isAggressive && (
+                    <View style={styles.realityWarnBox}>
+                      <Text style={styles.realityWarnText}>⚠ {'>'}15% CAGR is aggressive — consider extending timelines or reducing targets</Text>
+                    </View>
+                  )}
+
+                  {/* Suggested diversification */}
+                  <Text style={styles.realityAllocTitle}>Suggested diversification</Text>
+                  {allocation.items.map(item => (
+                    <View key={item.label} style={styles.realityAllocRow}>
+                      <View style={[styles.realityAllocDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.realityAllocLabel}>{item.label}</Text>
+                      <Text style={[styles.realityAllocPct, { color: item.color }]}>{item.pct}%</Text>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {/* Fully funded message */}
+                  <Text style={styles.realityWhatIf}>Invest {formatINRExact(totalMonthlySIP)}/mo at 10% CAGR</Text>
+                  <Text style={styles.realityAllocTitle}>Suggested diversification</Text>
+                  {allocation.items.map(item => (
+                    <View key={item.label} style={styles.realityAllocRow}>
+                      <View style={[styles.realityAllocDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.realityAllocLabel}>{item.label}</Text>
+                      <Text style={[styles.realityAllocPct, { color: item.color }]}>{item.pct}%</Text>
+                    </View>
+                  ))}
+                  <View style={[styles.realityWarnBox, { backgroundColor: GREEN_L, borderColor: GREEN }]}>
+                    <Text style={[styles.realityWarnText, { color: GREEN_H }]}>+ {formatINRExact(Math.abs(gap))} surplus → emergency fund or wealth building</Text>
+                  </View>
+                </>
+              )}
+
+              <Text style={styles.realityDisclaimer}>Educational estimates based on historical returns · Not investment advice</Text>
+            </View>
+          )
+        })()}
 
         {/* ── Goal Cards ─────────────────────────────────────────── */}
         {goals.length === 0 ? (
@@ -370,7 +540,7 @@ export default function GoalsScreen() {
                 {/* Off-track banner */}
                 {!onTrack && yearsLeft > 0 && (
                   <View style={styles.offTrackBanner}>
-                    <Text style={styles.offTrackText}>⚠ Need to increase monthly contribution to stay on track</Text>
+                    <Text style={styles.offTrackText}>⚠ Increase SIP or extend timeline to stay on track</Text>
                   </View>
                 )}
 
@@ -406,11 +576,21 @@ export default function GoalsScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Monthly needed */}
-                  {proj && (
-                  <View style={styles.sipRow}>
-                    <Text style={{ fontSize: 14, color: goalColor }}>📈</Text>
-                    <Text style={styles.sipText}>Save {formatINR(proj.simpleNeeded)}/mo to reach goal</Text>
+                  {/* Investment scenarios */}
+                  {proj && proj.scenarios && (
+                  <View style={styles.scenarioWrap}>
+                    <Text style={styles.scenarioTitle}>Monthly SIP needed</Text>
+                    <View style={styles.scenarioRow}>
+                      {proj.scenarios.map((sc: any) => (
+                        <View key={sc.label} style={[styles.scenarioItem, { borderColor: sc.color + '30' }]}>
+                          <Text style={{ fontSize: 14 }}>{sc.emoji}</Text>
+                          <Text style={[styles.scenarioSip, { color: sc.color }]}>{formatINR(sc.monthlyNeeded)}</Text>
+                          <Text style={styles.scenarioLabel}>{sc.returnPct}% CAGR</Text>
+                          <Text style={styles.scenarioSub}>{sc.riskLabel}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={styles.scenarioDisclaimer}>Educational estimates · Not investment advice</Text>
                   </View>
                   )}
                 </View>
@@ -618,6 +798,31 @@ const styles = StyleSheet.create({
   heroAmount: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
   heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
 
+  // Plan vs Reality card
+  realityCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.06)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 20, elevation: 2 },
+  realityHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  realityIcon: { fontSize: 18 },
+  realityTitle: { fontSize: 14, fontWeight: '800', color: TXT1, letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
+  realityCompareRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  realityCompareItem: { flex: 1, backgroundColor: BG_SEC, borderRadius: 12, padding: 10, alignItems: 'center' },
+  realityCompareLabel: { fontSize: 10, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 2 },
+  realityCompareValue: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  realityBarWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  realityBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: BG_SEC, overflow: 'hidden' },
+  realityBarFill: { height: 8, borderRadius: 4 },
+  realityBarLabel: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  realityDivider: { height: 1, backgroundColor: BORDER, marginBottom: 14 },
+  realityWhatIf: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 4 },
+  realityCagrNote: { fontSize: 13, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
+  realityWarnBox: { borderRadius: 12, padding: 10, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', marginBottom: 12 },
+  realityWarnText: { fontSize: 12, fontWeight: '700', color: '#991B1B', fontFamily: 'Manrope_700Bold', lineHeight: 18 },
+  realityAllocTitle: { fontSize: 12, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  realityAllocRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  realityAllocDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  realityAllocLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_400Regular' },
+  realityAllocPct: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  realityDisclaimer: { fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular', textAlign: 'center', marginTop: 14 },
+
   // Goal Card
   goalCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   goalCardWarn: { borderColor: '#FDE68A' },
@@ -635,6 +840,16 @@ const styles = StyleSheet.create({
   sipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 12 },
   sipText: { flex: 1, fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   sipStatus: { fontSize: 14, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+
+  // Investment scenarios
+  scenarioWrap: { marginTop: 12, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 12 },
+  scenarioTitle: { fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 8 },
+  scenarioRow: { flexDirection: 'row', gap: 8 },
+  scenarioItem: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 4, backgroundColor: BG_SEC, borderWidth: 1 },
+  scenarioSip: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold', marginTop: 4 },
+  scenarioLabel: { fontSize: 11, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginTop: 2 },
+  scenarioSub: { fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 1 },
+  scenarioDisclaimer: { fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular', textAlign: 'center', marginTop: 8 },
 
   // Projection toggle
   projToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 10, backgroundColor: TEAL_L },
