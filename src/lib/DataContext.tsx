@@ -41,6 +41,8 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
   const [incomeOverride, setIncomeOverride] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const forceAiRefreshRef = useRef(false)
+  const isRefreshingRef = useRef(false)
+  const aiReportLockRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -103,11 +105,14 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
   // ─── Centralized AI Report ─────────────────────────────────────────
   const loadAiReport = useCallback(async (eng: any, prof: Profile | null, txs: Transaction[], gls: Goal[], ast: any, override: number | null) => {
     if (!eng?.flow || !prof) return
+    if (aiReportLockRef.current) { console.log('[AI] skipped (already loading)'); return }
+    aiReportLockRef.current = true
+
     const flow = eng.flow
     const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
     const thisMonthTx = txs.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
     const baseIncome = override ?? prof?.monthly_income ?? 0
-    if (baseIncome === 0 && thisMonthTx.length === 0) return
+    if (baseIncome === 0 && thisMonthTx.length === 0) { aiReportLockRef.current = false; return }
 
     const skipCache = forceAiRefreshRef.current
     forceAiRefreshRef.current = false
@@ -135,7 +140,11 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     try {
       const income = flow?.income ?? prof?.monthly_income ?? 0
       const spent = flow?.totalSpent ?? 0
+      const goalSummary = gls.map((g: Goal) => `${g.name}:${g.target_amount}`).join(', ')
+      const assetSummary = ast ? Object.entries(ast).filter(([,v]) => (v as number) > 0).map(([k,v]) => `${k}:${v}`).join(', ') : 'none'
+      console.log('[AI] Calling backend — income:', income, 'spent:', spent, 'goals:', goalSummary, 'assets:', assetSummary, 'forceRefresh:', skipCache)
       const report = await fetchAiReport({
+        forceRefresh: skipCache,
         profile: prof,
         transactions: thisMonthTx,
         goals: gls.map((goal: Goal) => {
@@ -170,17 +179,20 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
           avgGoalFunded: eng.avgGoalFunded,
         },
       })
+      console.log('[AI] Got report, score:', report?.score)
       setAiReport(report)
       await AsyncStorage.setItem(AI_REPORT_KEY, JSON.stringify({ report, ts: Date.now() }))
     } catch (e) {
-      console.error('DataContext AI report fetch error:', e)
+      console.error('[AI] FETCH ERROR:', e)
     } finally {
       setAiReportLoading(false)
+      aiReportLockRef.current = false
     }
   }, [])
 
   // Helpers for child screens
   const refreshData = useCallback(async () => {
+    isRefreshingRef.current = true
     forceAiRefreshRef.current = true
     await AsyncStorage.removeItem(AI_REPORT_KEY)
     const freshData = await fetchAll()
@@ -188,10 +200,12 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     if (freshData) {
       await loadAiReport(freshData.engineResult, freshData.profile, freshData.transactions, freshData.goals, freshData.assets, incomeOverride)
     }
+    isRefreshingRef.current = false
   }, [fetchAll, loadAiReport, incomeOverride])
 
-  // Trigger AI report when engine/profile/data changes
+  // Trigger AI report when engine/profile/data changes (but not during manual refresh)
   useEffect(() => {
+    if (isRefreshingRef.current) return
     if (engineResult && profile) {
       loadAiReport(engineResult, profile, transactions, goals, assets, incomeOverride)
     }
@@ -205,11 +219,11 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     await loadAiReport(engineResult, profile, transactions, goals, assets, incomeOverride)
   }, [engineResult, profile, transactions, goals, assets, incomeOverride, loadAiReport])
 
-  const updateAssets = useCallback((newAssets: any) => {
+  const updateAssets = useCallback(async (newAssets: any) => {
     setAssets(newAssets)
-    AsyncStorage.setItem(ASSETS_KEY, JSON.stringify(newAssets))
+    await AsyncStorage.setItem(ASSETS_KEY, JSON.stringify(newAssets))
     // Clear cached AI report so next engine recompute triggers a fresh one
-    AsyncStorage.removeItem(AI_REPORT_KEY)
+    await AsyncStorage.removeItem(AI_REPORT_KEY)
     forceAiRefreshRef.current = true
     if (profile) {
       const startOfMonth = new Date()
