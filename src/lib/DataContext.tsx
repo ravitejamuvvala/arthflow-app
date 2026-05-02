@@ -2,9 +2,10 @@
 // Every screen reads from this context. No duplicate Supabase queries.
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Goal, Profile, Transaction } from '../types'
 import { runEngine } from '../utils/engine'
+import { fetchAiReport } from './api'
 import { supabase } from './supabase'
 
 const ASSETS_KEY = '@arthflow_assets'
@@ -16,10 +17,13 @@ interface AppDataContextType {
   goals: Goal[]
   assets: any
   engineResult: any
+  aiReport: any
+  aiReportLoading: boolean
   loading: boolean
   incomeOverride: number | null
   setIncomeOverride: (v: number | null) => void
   refreshData: () => Promise<void>
+  refreshAiReport: (force?: boolean) => Promise<void>
   updateAssets: (a: any) => void
   setGoals: (g: Goal[]) => void
 }
@@ -32,12 +36,15 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
   const [goals, setGoals] = useState<Goal[]>([])
   const [assets, setAssets] = useState<any>(null)
   const [engineResult, setEngineResult] = useState<any>(null)
+  const [aiReport, setAiReport] = useState<any>(null)
+  const [aiReportLoading, setAiReportLoading] = useState(false)
   const [incomeOverride, setIncomeOverride] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const forceAiRefreshRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
+    if (!user) { setLoading(false); return null }
 
     const fourMonthsAgo = new Date()
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 3)
@@ -83,6 +90,9 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     })
     setEngineResult(result)
     setLoading(false)
+
+    // Return fresh data so callers can use it directly
+    return { profile: p, transactions: txs, goals: g, assets: assetData, engineResult: result }
   }, [incomeOverride])
 
   // Fetch on mount and when incomeOverride changes
@@ -90,15 +100,117 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     if (session) fetchAll()
   }, [session, fetchAll])
 
+  // ─── Centralized AI Report ─────────────────────────────────────────
+  const loadAiReport = useCallback(async (eng: any, prof: Profile | null, txs: Transaction[], gls: Goal[], ast: any, override: number | null) => {
+    if (!eng?.flow || !prof) return
+    const flow = eng.flow
+    const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
+    const thisMonthTx = txs.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
+    const baseIncome = override ?? prof?.monthly_income ?? 0
+    if (baseIncome === 0 && thisMonthTx.length === 0) return
+
+    const skipCache = forceAiRefreshRef.current
+    forceAiRefreshRef.current = false
+    setAiReportLoading(true)
+
+    // Try cache first (unless forced)
+    if (!skipCache) {
+      try {
+        const raw = await AsyncStorage.getItem(AI_REPORT_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          const cachedDate = new Date(parsed.ts)
+          const now = new Date()
+          const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
+          if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+            setAiReport(parsed.report)
+            setAiReportLoading(false)
+            return
+          }
+        }
+      } catch {}
+    }
+
+    // Fetch fresh from backend
+    try {
+      const income = flow?.income ?? prof?.monthly_income ?? 0
+      const spent = flow?.totalSpent ?? 0
+      const report = await fetchAiReport({
+        profile: prof,
+        transactions: thisMonthTx,
+        goals: gls.map((goal: Goal) => {
+          const now = new Date()
+          const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : now.getFullYear() + 5
+          const monthsLeft = Math.max(1, (targetYear - now.getFullYear()) * 12 + (11 - now.getMonth()))
+          const yearsLeft = Math.ceil(monthsLeft / 12)
+          const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
+          const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
+          return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
+        }),
+        assets: ast,
+        monthlyFlow: {
+          income,
+          spent,
+          saved: Math.max(0, income - spent),
+          savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
+          lifestyle: flow?.catTotals?.lifestyle ?? 0,
+          lifePct: income > 0 ? Math.round(((flow?.catTotals?.lifestyle ?? 0) / income) * 100) : 0,
+          essentials: flow?.catTotals?.essentials ?? 0,
+          emis: flow?.catTotals?.emis ?? 0,
+        },
+        engine: {
+          flow: eng.flow,
+          score: eng.score,
+          scoreLabel: eng.scoreLabel,
+          emergencyMonths: eng.emergencyMonths,
+          investment: eng.investment,
+          assetAnalysis: eng.assetAnalysis,
+          risk: eng.risk,
+          trend: eng.trend,
+          avgGoalFunded: eng.avgGoalFunded,
+        },
+      })
+      setAiReport(report)
+      await AsyncStorage.setItem(AI_REPORT_KEY, JSON.stringify({ report, ts: Date.now() }))
+    } catch (e) {
+      console.error('DataContext AI report fetch error:', e)
+    } finally {
+      setAiReportLoading(false)
+    }
+  }, [])
+
   // Helpers for child screens
   const refreshData = useCallback(async () => {
-    await fetchAll()
-  }, [fetchAll])
+    forceAiRefreshRef.current = true
+    await AsyncStorage.removeItem(AI_REPORT_KEY)
+    const freshData = await fetchAll()
+    // Directly call loadAiReport with the fresh data — don't rely on useEffect
+    if (freshData) {
+      await loadAiReport(freshData.engineResult, freshData.profile, freshData.transactions, freshData.goals, freshData.assets, incomeOverride)
+    }
+  }, [fetchAll, loadAiReport, incomeOverride])
+
+  // Trigger AI report when engine/profile/data changes
+  useEffect(() => {
+    if (engineResult && profile) {
+      loadAiReport(engineResult, profile, transactions, goals, assets, incomeOverride)
+    }
+  }, [engineResult, profile, transactions, goals, assets, incomeOverride, loadAiReport])
+
+  const refreshAiReport = useCallback(async (force?: boolean) => {
+    if (force) {
+      await AsyncStorage.removeItem(AI_REPORT_KEY)
+      forceAiRefreshRef.current = true
+    }
+    await loadAiReport(engineResult, profile, transactions, goals, assets, incomeOverride)
+  }, [engineResult, profile, transactions, goals, assets, incomeOverride, loadAiReport])
 
   const updateAssets = useCallback((newAssets: any) => {
     setAssets(newAssets)
     AsyncStorage.setItem(ASSETS_KEY, JSON.stringify(newAssets))
+    // Clear cached AI report so next engine recompute triggers a fresh one
     AsyncStorage.removeItem(AI_REPORT_KEY)
+    forceAiRefreshRef.current = true
     if (profile) {
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
@@ -124,6 +236,8 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     goals,
     assets,
     engineResult,
+    aiReport,
+    aiReportLoading,
     loading,
 
     // Income override (used by Home screen)
@@ -131,7 +245,8 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     setIncomeOverride,
 
     // Actions
-    refreshData,     // re-fetch everything from Supabase + recompute engine
+    refreshData,     // re-fetch everything from Supabase + recompute engine + refresh AI report
+    refreshAiReport, // force-refresh AI report only
     updateAssets,    // update assets + recompute engine
     setGoals,        // for local goal mutations before Supabase sync
   }

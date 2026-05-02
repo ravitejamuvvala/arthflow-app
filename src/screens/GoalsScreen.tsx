@@ -79,10 +79,15 @@ const goalEmoji = (name: string) => {
   return '🎯'
 }
 
+// ─── Months remaining helper (month-level precision) ────────────────────
+function monthsUntilYear(targetYear: number): number {
+  const now = new Date()
+  return Math.max(1, (targetYear - now.getFullYear()) * 12 + (11 - now.getMonth()))
+}
+
 // ─── SEBI-Compliant Projection Engine ───────────────────────────────────
 function buildProjection(targetAmount: number, currentSaved: number, targetYear: number, monthlySIP: number) {
-  const years = Math.max(1, targetYear - new Date().getFullYear())
-  const months = years * 12
+  const months = monthsUntilYear(targetYear)
   const remaining = Math.max(0, targetAmount - currentSaved)
 
   const RATES = [
@@ -106,7 +111,7 @@ function buildProjection(targetAmount: number, currentSaved: number, targetYear:
   const projAt8 = currentSaved + monthlySIP * ((Math.pow(1 + r8, months) - 1) / r8)
   const simpleNeeded = remaining > 0 ? Math.ceil(remaining / months) : 0
 
-  return { scenarios, simpleNeeded, canAchieve: projAt8 >= targetAmount * 0.9, yearsLeft: years }
+  return { scenarios, simpleNeeded, canAchieve: projAt8 >= targetAmount * 0.9, yearsLeft: Math.ceil(months / 12) }
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────
@@ -229,11 +234,10 @@ export default function GoalsScreen() {
   // Compute total monthly SIP needed (simple) and nearest goal
   const goalProjections = configuredGoals.map(g => {
     const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : thisYear + 5
-    const years = Math.max(1, targetYear - thisYear)
-    const months = years * 12
+    const months = monthsUntilYear(targetYear)
     const remaining = Math.max(0, g.target_amount - g.saved_amount)
     const monthlyNeeded = months > 0 ? Math.ceil(remaining / months) : 0
-    return { ...g, targetYear, yearsLeft: years, monthlyNeeded }
+    return { ...g, targetYear, yearsLeft: Math.ceil(months / 12), monthlyNeeded }
   })
   const totalMonthlySIP = goalProjections.reduce((s, g) => s + g.monthlyNeeded, 0)
   const nearestGoal = goalProjections.filter(g => g.yearsLeft > 0).sort((a, b) => a.yearsLeft - b.yearsLeft)[0]
@@ -332,7 +336,8 @@ export default function GoalsScreen() {
             const pct = needsSetup ? 0 : Math.min((goal.saved_amount / goal.target_amount) * 100, 100)
             const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : thisYear + 5
             const yearsLeft = Math.max(0, targetYear - thisYear)
-            const monthlySIP = (needsSetup || yearsLeft <= 0) ? 0 : Math.ceil((goal.target_amount - goal.saved_amount) / (yearsLeft * 12))
+            const monthsRemaining = monthsUntilYear(targetYear)
+            const monthlySIP = (needsSetup || monthsRemaining <= 0) ? 0 : Math.ceil((goal.target_amount - goal.saved_amount) / monthsRemaining)
             const proj = needsSetup ? null : buildProjection(goal.target_amount, goal.saved_amount, targetYear, monthlySIP)
             const onTrack = proj?.canAchieve ?? false
             const goalColor = needsSetup ? ORANGE : (onTrack ? BLUE : ORANGE)

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,7 +15,6 @@ import {
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import TopActionCard from '../components/TopActionCard'
-import { fetchAiReport } from '../lib/api'
 import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { Transaction } from '../types'
@@ -94,13 +93,10 @@ function autoClassify(desc: string): { cat: string; emoji: string } | null {
 }
 
 export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void }) {
-  const { profile, transactions, goals, assets, engineResult, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
+  const { profile, transactions, goals, assets, engineResult, aiReport, aiReportLoading: reportLoading, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
-  const forceRefreshRef = useRef(false)
 
-  // AI Report (screen-local — display concern only)
-  const [aiReport, setAiReport] = useState<any>(null)
-  const [reportLoading, setReportLoading] = useState(false)
+  // Report stale indicator (when user returns to Home after changes on other tabs)
   const [reportStale, setReportStale] = useState(false)
 
   // Expense sheet
@@ -128,83 +124,17 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const userName = profile?.full_name || 'there'
   const userAge = profile?.age ?? 0
 
-  const loadAiReport = useCallback(async () => {
-    if (!engineResult?.flow || !profile) return
-    const flow = engineResult.flow
-    const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
-    const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
-    const baseIncome = incomeOverride ?? profile?.monthly_income ?? 0
-    if (baseIncome === 0 && thisMonthTx.length === 0) return
-
-    const skipCache = forceRefreshRef.current
-    forceRefreshRef.current = false
-    setReportLoading(true)
-    if (!skipCache) {
-      try {
-        const cached = await AsyncStorage.getItem('@arthflow_ai_report')
-        if (cached) {
-          const parsed = JSON.parse(cached)
-          const cachedDate = new Date(parsed.ts)
-          const now = new Date()
-          const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
-          if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-            setAiReport(parsed.report)
-            setReportLoading(false)
-            return
-          }
-        }
-      } catch {}
-    }
-    try {
-      const income = flow?.income ?? profile?.monthly_income ?? 0
-      const spent = flow?.totalSpent ?? 0
-      const report = await fetchAiReport({
-        profile,
-        transactions: thisMonthTx,
-        goals: goals.map(goal => {
-          const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
-          const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
-          const monthsLeft = yearsLeft * 12
-          const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
-          const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
-          return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
-        }),
-        assets,
-        monthlyFlow: {
-          income,
-          spent,
-          saved: Math.max(0, income - spent),
-          savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
-          lifestyle: flow?.catTotals?.lifestyle ?? 0,
-          lifePct: income > 0 ? Math.round(((flow?.catTotals?.lifestyle ?? 0) / income) * 100) : 0,
-          essentials: flow?.catTotals?.essentials ?? 0,
-          emis: flow?.catTotals?.emis ?? 0,
-        },
-      })
-      setAiReport(report)
-      await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
-    } catch (e) {
-      console.error('AI report error:', e)
-    } finally {
-      setReportLoading(false)
-    }
-  }, [engineResult, profile, transactions, goals, assets, incomeOverride])
-
-  useEffect(() => { loadAiReport() }, [loadAiReport])
+  // AI report comes from shared DataContext — no local fetch needed
 
   const onRefresh = async () => {
     setRefreshing(true)
     setReportStale(false)
-    await AsyncStorage.removeItem('@arthflow_ai_report')
-    forceRefreshRef.current = true
     await refreshData()
     setRefreshing(false)
   }
 
   const forceRefreshReport = async () => {
     setReportStale(false)
-    await AsyncStorage.removeItem('@arthflow_ai_report')
-    forceRefreshRef.current = true
     await refreshData()
   }
 

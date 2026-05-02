@@ -1,5 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import {
     ActivityIndicator,
     Animated,
@@ -18,9 +17,9 @@ import {
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import HealthScoreRing from '../components/HealthScoreRing'
 import WhatIfSimulator from '../components/WhatIfSimulator'
-import { fetchAiChat, fetchAiReport } from '../lib/api'
+import { fetchAiChat } from '../lib/api'
 import { useAppData } from '../lib/DataContext'
-import { Goal, Profile, Transaction } from '../types'
+import { Goal, Profile } from '../types'
 import { fmtInr } from '../utils/calculations'
 import { buildAppReport, generateDownloadReport } from '../utils/report'
 
@@ -168,11 +167,8 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
 export default function CoachScreen({ showReport }: { showReport?: boolean }) {
-  const { profile, transactions, goals, assets, engineResult, loading: dataLoading, refreshData } = useAppData()
+  const { profile, transactions, goals, assets, engineResult, aiReport, aiReportLoading: reportLoading, loading: dataLoading, refreshData, refreshAiReport } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
-  const [aiReport, setAiReport] = useState<any>(null)
-  const [reportLoading, setReportLoading] = useState(false)
-  const forceRefreshRef = useRef(false)
 
   // Chat
   const [messages, setMessages] = useState([
@@ -200,67 +196,10 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
     Animated.parallel([anim(dot1, 0), anim(dot2, 150), anim(dot3, 300)]).start()
   }, [dot1, dot2, dot3])
 
-  // Load AI report from cache on mount or when engine changes
-  const loadAiReport = useCallback(async () => {
-    if (!engineResult || !profile) return
-    const skipCache = forceRefreshRef.current
-    forceRefreshRef.current = false
-    setReportLoading(true)
-    let reportLoaded = false
-    if (!skipCache) {
-      try {
-        const raw = await AsyncStorage.getItem('@arthflow_ai_report')
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-            setAiReport(parsed.report)
-            reportLoaded = true
-          }
-        }
-      } catch {}
-    }
-    if (!reportLoaded) {
-      try {
-        const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
-        const thisMonthTx = transactions.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
-        const report = await fetchAiReport({
-          profile,
-          goals: goals.map((goal: Goal) => {
-            const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
-            const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
-            const monthsLeft = yearsLeft * 12
-            const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
-            const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
-            return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
-          }),
-          assets,
-          engine: {
-            flow: engineResult.flow,
-            score: engineResult.score,
-            scoreLabel: engineResult.scoreLabel,
-            emergencyMonths: engineResult.emergencyMonths,
-            investment: engineResult.investment,
-            assetAnalysis: engineResult.assetAnalysis,
-            risk: engineResult.risk,
-            trend: engineResult.trend,
-            avgGoalFunded: engineResult.avgGoalFunded,
-          },
-        })
-        setAiReport(report)
-        await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
-      } catch (e) {
-        console.error('CoachScreen AI report fetch error:', e)
-      }
-    }
-    setReportLoading(false)
-  }, [engineResult, profile, transactions, goals, assets])
-
-  useEffect(() => { loadAiReport() }, [loadAiReport])
+  // AI report comes from shared DataContext — no local fetch needed
 
   const onRefresh = async () => {
     setRefreshing(true)
-    await AsyncStorage.removeItem('@arthflow_ai_report')
-    forceRefreshRef.current = true
     await refreshData()
     setRefreshing(false)
   }
@@ -334,7 +273,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       profile,
       goals,
       assets,
-      transactions: txns,
+      transactions: transactions,
       aiReport,
     })
     try {

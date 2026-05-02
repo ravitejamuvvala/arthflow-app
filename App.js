@@ -133,7 +133,8 @@ export default function App() {
 
   if (isOnboarded === false) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <OnboardingScreen onComplete={() => { clearLocalData(); setActiveTab('home'); setIsOnboarded(true) }} />
       </SafeAreaView>
     )
@@ -143,7 +144,7 @@ export default function App() {
   const darkBar = activeTab === 'coach'
 
   return (
-    <DataProvider session={session}>
+    <DataProvider key={session?.user?.id ?? 'none'} session={session}>
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle={darkBar ? 'dark-content' : 'light-content'} translucent backgroundColor="transparent" />
       <View style={[styles.screen, { paddingTop: TOP_INSET }]}>

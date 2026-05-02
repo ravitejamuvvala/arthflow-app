@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import { commaFormat } from '../utils/calculations'
@@ -202,6 +203,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const [selectedGoals, setSelectedGoals] = useState<string[]>([])
   const [saving, setSaving]         = useState(false)
 
+  const insets = useSafeAreaInsets()
   const fadeAnim = useRef(new Animated.Value(1)).current
 
   // Sync ageText when slider changes age (but not while user is typing)
@@ -269,7 +271,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const renderWelcome = () => (
     <View style={s.stepContainer}>
       {/* Navy hero */}
-      <View style={s.welcomeHero}>
+      <View style={[s.welcomeHero, { paddingTop: insets.top + 20 }]}>
         <View style={s.heroBlob1} />
         <View style={s.heroBlob2} />
         <View style={s.heroWatermark} pointerEvents="none">
@@ -325,7 +327,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
     }
     return (
       <KeyboardAvoidingView style={s.stepContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={[s.stepBodyScroll, { paddingTop: insets.top + 8 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <StepDots current={1} total={4} />
           <Text style={s.stepTitle}>Let's start with you</Text>
           <Text style={s.stepDesc}>This personalises your entire experience.</Text>
@@ -451,7 +453,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   // ─── Step 2: Income & Expenses ───────────────────────────────────
   const renderIncomeExpenses = () => (
     <KeyboardAvoidingView style={s.stepContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[s.stepBodyScroll, { paddingTop: insets.top + 8 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <StepDots current={2} total={4} />
         <Text style={s.stepTitle}>Your monthly money flow</Text>
         <Text style={s.stepDesc}>This is your base — AI adjusts when income changes month to month.</Text>
@@ -501,7 +503,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   // ─── Step 3: Goals (select only) ───────────────────────────────────
   const renderGoals = () => (
     <View style={s.stepContainer}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.stepBodyScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[s.stepBodyScroll, { paddingTop: insets.top + 8 }]} showsVerticalScrollIndicator={false}>
         <StepDots current={3} total={4} />
         <Text style={s.stepTitle}>What are you working towards?</Text>
         <Text style={s.stepDesc}>Select your goals — you can set targets and amounts later in the Goals tab.</Text>
@@ -568,7 +570,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
       <View style={s.stepContainer}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
           {/* Dark hero */}
-          <View style={s.summaryHero}>
+          <View style={[s.summaryHero, { paddingTop: insets.top + 8 }]}>
             <View style={s.heroBlob1} />
             <View style={s.heroBlob2} />
             <View style={s.heroWatermark} pointerEvents="none">
