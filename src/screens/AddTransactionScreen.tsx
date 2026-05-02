@@ -118,7 +118,8 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
             placeholderTextColor="#9CA3AF"
             value={amount}
             onChangeText={setAmount}
-            keyboardType="numeric"
+            keyboardType="number-pad"
+            returnKeyType="done"
             autoFocus
           />
         </View>

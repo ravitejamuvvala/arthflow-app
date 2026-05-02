@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
     ActivityIndicator,
     Alert,
+    Dimensions,
     KeyboardAvoidingView,
     Modal,
     PanResponder,
@@ -126,6 +127,11 @@ export default function GoalsScreen() {
   const [fMonthly, setFMonthly] = useState('')
   const [fPriority, setFPriority] = useState<'high' | 'medium' | 'low'>('medium')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [fYearText, setFYearText] = useState(String(new Date().getFullYear() + 5))
+  const yearInputFocused = useRef(false)
+
+  // Sync year text when slider changes year (but not while user is typing)
+  useEffect(() => { if (!yearInputFocused.current) setFYearText(String(fYear)) }, [fYear])
 
   const fetchGoals = useCallback(async () => {
     const { data } = await supabase
@@ -163,7 +169,8 @@ export default function GoalsScreen() {
     setEditGoal(null)
     setFEmoji(preset.emoji); setFName(preset.name)
     setFTarget(String(preset.defaultTarget)); setFSaved('0')
-    setFYear(new Date().getFullYear() + preset.defaultYears)
+    const yr = new Date().getFullYear() + preset.defaultYears
+    setFYear(yr); setFYearText(String(yr))
     setFMonthly(''); setFPriority('medium')
     setShowSheet(true)
   }
@@ -172,7 +179,9 @@ export default function GoalsScreen() {
     setShowPresets(false)
     setEditGoal(null)
     setFEmoji('🎯'); setFName(''); setFTarget(''); setFSaved('0')
-    setFYear(new Date().getFullYear() + 5); setFMonthly(''); setFPriority('medium')
+    const yr = new Date().getFullYear() + 5
+    setFYear(yr); setFYearText(String(yr))
+    setFMonthly(''); setFPriority('medium')
     setShowSheet(true)
   }
 
@@ -181,7 +190,8 @@ export default function GoalsScreen() {
     setFEmoji(goalEmoji(g.name)); setFName(g.name)
     setFTarget(String(g.target_amount)); setFSaved(String(g.saved_amount))
     const yr = g.target_date ? new Date(g.target_date).getFullYear() : new Date().getFullYear() + 5
-    setFYear(yr); setFMonthly(''); setFPriority('medium')
+    setFYear(yr); setFYearText(String(yr))
+    setFMonthly(''); setFPriority('medium')
     setShowSheet(true)
   }
 
@@ -230,6 +240,7 @@ export default function GoalsScreen() {
   const thisYear    = new Date().getFullYear()
 
   // Year slider drag
+  const { width: SCREEN_W } = Dimensions.get('window')
   const sliderRef = useRef<View>(null)
   const sliderPan = useRef(
     PanResponder.create({
@@ -440,7 +451,7 @@ export default function GoalsScreen() {
               <View style={styles.currencyRow}>
                 <Text style={styles.currencyPrefix}>₹</Text>
                 <TextInput value={fTarget} onChangeText={setFTarget} placeholder="0" placeholderTextColor={TXT3}
-                  keyboardType="number-pad" style={styles.currencyInput} contextMenuHidden autoComplete="off" />
+                  keyboardType="number-pad" returnKeyType="done" style={styles.currencyInput} autoFocus />
               </View>
 
               {/* Target Year */}
@@ -468,16 +479,23 @@ export default function GoalsScreen() {
                 </View>
                 <View style={{ borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: BLUE + '30', alignItems: 'center' }}>
                   <TextInput
-                    value={String(fYear)}
+                    value={fYearText}
                     onChangeText={(text) => {
+                      setFYearText(text)
                       const n = parseInt(text, 10)
                       if (!isNaN(n) && n >= thisYear && n <= thisYear + 40) setFYear(n)
-                      else if (text === '') setFYear(thisYear)
+                    }}
+                    onFocus={() => { yearInputFocused.current = true }}
+                    onBlur={() => {
+                      yearInputFocused.current = false
+                      const n = parseInt(fYearText, 10)
+                      if (!isNaN(n) && n >= thisYear && n <= thisYear + 40) { setFYear(n); setFYearText(String(n)) }
+                      else { setFYear(thisYear + 5); setFYearText(String(thisYear + 5)) }
                     }}
                     keyboardType="number-pad"
+                    returnKeyType="done"
                     maxLength={4}
-                    contextMenuHidden
-                    autoComplete="off"
+                    selectTextOnFocus
                     style={{ fontSize: 18, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold', textAlign: 'center', minWidth: 52, padding: 0 }}
                   />
                 </View>

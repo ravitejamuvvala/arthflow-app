@@ -504,8 +504,12 @@ export default function ProfileScreen() {
                       onChangeText={setAssetInputValue}
                       placeholder="0"
                       placeholderTextColor="rgba(255,255,255,0.3)"
-                      keyboardType="numeric"
-                      style={{ fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120, fontFamily: 'Manrope_700Bold' }}
+                      keyboardType="number-pad"
+                      returnKeyType="done"
+                      autoFocus
+                      selectTextOnFocus
+                      onSubmitEditing={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(assetInputValue) || 0); setActiveAssetSheet(null) } }}
+                      style={{ fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120, fontFamily: 'Manrope_700Bold' }}}
                     />
                   </View>
                 </View>
@@ -583,7 +587,7 @@ export default function ProfileScreen() {
               <Text style={st.editFieldLabel}>MONTHLY TAKE-HOME INCOME</Text>
               <View style={st.editIncomeRow}>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
-                <TextInput style={st.editIncomeInput} value={editIncome} onChangeText={setEditIncome} placeholder="0" placeholderTextColor={TXT3} keyboardType="numeric" />
+                <TextInput style={st.editIncomeInput} value={editIncome} onChangeText={setEditIncome} placeholder="0" placeholderTextColor={TXT3} keyboardType="number-pad" returnKeyType="done" />
               </View>
             </ScrollView>
 

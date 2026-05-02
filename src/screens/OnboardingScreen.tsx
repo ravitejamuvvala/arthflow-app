@@ -1,16 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
 import {
-    Animated,
-    Dimensions,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -103,11 +103,21 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
     onChange(Math.max(min, Math.min(max, snapped)))
   }
 
+  const onInputChange = (text: string) => {
+    setInputText(text)
+    // Live-sync slider as user types
+    const parsed = parseInt(text.replace(/[^0-9]/g, ''), 10)
+    if (!isNaN(parsed)) {
+      const clamped = Math.max(min, Math.min(max, Math.round(parsed / step) * step))
+      onChange(clamped)
+    }
+  }
+
   const onInputSubmit = () => {
     isFocused.current = false
     const parsed = parseInt(inputText.replace(/[^0-9]/g, ''), 10)
     if (!isNaN(parsed)) {
-      const clamped = Math.max(min, Math.min(max, parsed))
+      const clamped = Math.max(min, Math.min(max, Math.round(parsed / step) * step))
       onChange(clamped)
       setInputText(String(clamped))
     } else {
@@ -127,15 +137,13 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
           <TextInput
             style={[s.sliderInput, { color }]}
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={onInputChange}
             onFocus={() => { isFocused.current = true }}
             onBlur={onInputSubmit}
             onSubmitEditing={onInputSubmit}
             keyboardType="number-pad"
             returnKeyType="done"
             selectTextOnFocus
-            contextMenuHidden
-            autoComplete="off"
           />
           {suffix ? <Text style={[s.sliderInputSuffix, { color }]}>{suffix}</Text> : null}
         </View>
@@ -340,7 +348,11 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 <TextInput
                   style={[s.sliderInput, { color: BLUE }]}
                   value={ageText}
-                  onChangeText={setAgeText}
+                  onChangeText={(text) => {
+                    setAgeText(text)
+                    const parsed = parseInt(text.replace(/[^0-9]/g, ''), 10)
+                    if (!isNaN(parsed)) setAge(Math.max(18, Math.min(70, parsed)))
+                  }}
                   onFocus={() => { ageInputFocused.current = true }}
                   onBlur={() => {
                     ageInputFocused.current = false
@@ -357,8 +369,6 @@ export default function OnboardingScreen({ onComplete }: Props) {
                   keyboardType="number-pad"
                   returnKeyType="done"
                   selectTextOnFocus
-                  contextMenuHidden
-                  autoComplete="off"
                 />
                 <Text style={[s.sliderInputSuffix, { color: BLUE }]}>yrs</Text>
               </View>
