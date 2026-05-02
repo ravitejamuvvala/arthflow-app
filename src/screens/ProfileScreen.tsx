@@ -190,11 +190,10 @@ export default function ProfileScreen() {
               email: null,
             }).eq('id', user.id),
           ])
-          // Clear all local caches
-          await AsyncStorage.multiRemove([
-            '@arthflow_assets',
-            '@arthflow_ai_report',
-          ])
+          // Clear ALL local caches (same as sign-out)
+          const keys = await AsyncStorage.getAllKeys()
+          const arthKeys = keys.filter(k => k.startsWith('@arthflow_'))
+          if (arthKeys.length) await AsyncStorage.multiRemove(arthKeys)
           // Sign out so AppNavigator takes user to onboarding
           await supabase.auth.signOut()
         }},

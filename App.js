@@ -33,7 +33,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home')
   const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
-  const [refreshKey, setRefreshKey] = useState(0)
   const [isOnboarded, setIsOnboarded] = useState(null) // null = loading, true/false = checked
 
   const [fontsLoaded] = useFonts({
@@ -165,10 +164,6 @@ export default function App() {
             key={tab.key}
             style={styles.tab}
             onPress={() => {
-              if (tab.key === 'home' && activeTab !== 'home') {
-                // Coming back to Home — mark report stale so user sees refresh prompt
-                setRefreshKey(k => k + 1)
-              }
               setActiveTab(tab.key)
             }}
           >
@@ -184,7 +179,7 @@ export default function App() {
 
       <Modal visible={showAddTransaction} animationType="slide" presentationStyle="pageSheet">
         <AddTransactionScreen
-          onSuccess={() => { setShowAddTransaction(false); setRefreshKey(k => k + 1) }}
+          onSuccess={() => { setShowAddTransaction(false) }}
           onCancel={() => setShowAddTransaction(false)}
         />
       </Modal>

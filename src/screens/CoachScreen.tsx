@@ -171,6 +171,8 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const { profile, transactions, goals, assets, engineResult, loading: dataLoading, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
   const [aiReport, setAiReport] = useState<any>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const forceRefreshRef = useRef(false)
 
   // Chat
   const [messages, setMessages] = useState([
@@ -201,17 +203,22 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   // Load AI report from cache on mount or when engine changes
   const loadAiReport = useCallback(async () => {
     if (!engineResult || !profile) return
+    const skipCache = forceRefreshRef.current
+    forceRefreshRef.current = false
+    setReportLoading(true)
     let reportLoaded = false
-    try {
-      const raw = await AsyncStorage.getItem('@arthflow_ai_report')
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-          setAiReport(parsed.report)
-          reportLoaded = true
+    if (!skipCache) {
+      try {
+        const raw = await AsyncStorage.getItem('@arthflow_ai_report')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+            setAiReport(parsed.report)
+            reportLoaded = true
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
     if (!reportLoaded) {
       try {
         const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
@@ -245,6 +252,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         console.error('CoachScreen AI report fetch error:', e)
       }
     }
+    setReportLoading(false)
   }, [engineResult, profile, transactions, goals, assets])
 
   useEffect(() => { loadAiReport() }, [loadAiReport])
@@ -252,6 +260,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const onRefresh = async () => {
     setRefreshing(true)
     await AsyncStorage.removeItem('@arthflow_ai_report')
+    forceRefreshRef.current = true
     await refreshData()
     setRefreshing(false)
   }
@@ -395,7 +404,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
               <HealthScoreRing
                 score={appReport?.score ?? 0}
                 label={appReport?.scoreLabel}
-                subtitle={appReport?.scoreLabel ? undefined : 'Loading…'}
+                subtitle={reportLoading ? 'Refreshing…' : (appReport?.scoreLabel ? undefined : 'Loading…')}
               />
               <View style={{ flex: 1, marginLeft: 16 }}>
                 {highlightRupee(appReport?.summary ?? '', RUPEE_ACCENT_LIGHT, s.scoreSummary)}

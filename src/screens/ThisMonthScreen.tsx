@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -96,6 +96,7 @@ function autoClassify(desc: string): { cat: string; emoji: string } | null {
 export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void }) {
   const { profile, transactions, goals, assets, engineResult, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
+  const forceRefreshRef = useRef(false)
 
   // AI Report (screen-local — display concern only)
   const [aiReport, setAiReport] = useState<any>(null)
@@ -135,21 +136,25 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
     const baseIncome = incomeOverride ?? profile?.monthly_income ?? 0
     if (baseIncome === 0 && thisMonthTx.length === 0) return
 
+    const skipCache = forceRefreshRef.current
+    forceRefreshRef.current = false
     setReportLoading(true)
-    try {
-      const cached = await AsyncStorage.getItem('@arthflow_ai_report')
-      if (cached) {
-        const parsed = JSON.parse(cached)
-        const cachedDate = new Date(parsed.ts)
-        const now = new Date()
-        const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
-        if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-          setAiReport(parsed.report)
-          setReportLoading(false)
-          return
+    if (!skipCache) {
+      try {
+        const cached = await AsyncStorage.getItem('@arthflow_ai_report')
+        if (cached) {
+          const parsed = JSON.parse(cached)
+          const cachedDate = new Date(parsed.ts)
+          const now = new Date()
+          const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
+          if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+            setAiReport(parsed.report)
+            setReportLoading(false)
+            return
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
     try {
       const income = flow?.income ?? profile?.monthly_income ?? 0
       const spent = flow?.totalSpent ?? 0
@@ -191,6 +196,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
     setRefreshing(true)
     setReportStale(false)
     await AsyncStorage.removeItem('@arthflow_ai_report')
+    forceRefreshRef.current = true
     await refreshData()
     setRefreshing(false)
   }
@@ -198,6 +204,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const forceRefreshReport = async () => {
     setReportStale(false)
     await AsyncStorage.removeItem('@arthflow_ai_report')
+    forceRefreshRef.current = true
     await refreshData()
   }
 

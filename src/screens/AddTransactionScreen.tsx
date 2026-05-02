@@ -28,6 +28,7 @@ type Props = {
 }
 
 export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
+  const { refreshData } = useAppData()
   const [type, setType] = useState<'income' | 'expense'>('expense')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
@@ -70,6 +71,8 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
       return
     }
 
+    // Refresh shared data context so all screens see the new transaction
+    await refreshData()
     onSuccess()
   }
 
