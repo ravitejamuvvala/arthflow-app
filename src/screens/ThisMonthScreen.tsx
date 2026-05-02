@@ -1,24 +1,25 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import MoneyStoryCard from '../components/MoneyStoryCard'
 import { fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
-import { runEngine } from '../utils/engine'
+import { getMoneyStory, getTopAction, runEngine } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -369,34 +370,11 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </View>
       </View>
 
-      {/* ── Top Insights Ticker ────────────────────────── */}
-      {aiReport?.topInsights?.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14, marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}>
-          {aiReport.topInsights.map((insight: string, i: number) => (
-            <View key={i} style={s.insightChip}>
-              <Text style={{ fontSize: 12 }}>{i === 0 ? '🔥' : i === 1 ? '💡' : '📌'}</Text>
-              <Text style={s.insightChipText} numberOfLines={2}>{insight}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      )}
+      {/* ── Top Action Card ──────────────────────────────── */}
+      <TopActionCard topAction={getTopAction(engineResult)} onPress={onNavigateCoach} />
 
-      {/* ── Problem Card (only if there IS a problem) ────── */}
-      {topProblem && (
-        <View style={s.problemCard}>
-          <View style={s.problemHeader}>
-            <Text style={{ fontSize: 16 }}>⚡</Text>
-            <Text style={s.problemTitle}>{topProblem}</Text>
-          </View>
-          <Text style={s.problemMessage}>{insights[0]?.message}</Text>
-          {action && (
-            <TouchableOpacity style={s.ctaBtn} onPress={onNavigateCoach} activeOpacity={0.85}>
-              <Text style={s.ctaBtnText}>{action}</Text>
-              <Text style={s.ctaArrow}>›</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      {/* ── Money Story Card ────────────────────────────── */}
+      <MoneyStoryCard story={getMoneyStory(engineResult)} onPress={onNavigatePlan} />
 
       {/* ── Monthly Trend ────────────────────────────────── */}
       {snapshots.length > 1 && (

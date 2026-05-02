@@ -1,24 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    KeyboardAvoidingView,
+    LayoutAnimation,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import HealthScoreRing from '../components/HealthScoreRing'
+import WhatIfSimulator from '../components/WhatIfSimulator'
 import { fetchAiChat, fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr } from '../utils/calculations'
 import { runEngine } from '../utils/engine'
+import { buildAppReport, generateDownloadReport } from '../utils/report'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE   = '#1E3A8A'
@@ -36,6 +41,24 @@ const TXT2   = '#6B7280'
 const TXT3   = '#9CA3AF'
 const BORDER = '#E5E7EB'
 const BG_SEC = '#F1F5F9'
+const RUPEE_ACCENT = '#1E3A8A'
+const RUPEE_ACCENT_LIGHT = '#F59E0B'
+
+// ─── Highlight ₹ amounts in text ────────────────────────────────────────
+function highlightRupee(text: string, color: string = RUPEE_ACCENT, baseStyle?: any) {
+  if (!text) return null
+  const parts = text.split(/(₹[\d,\.]+(?:\s*(?:K|L|Cr|lakh|crore))?(?:\/\w+)?)/gi)
+  if (parts.length === 1) return <Text style={baseStyle}>{text}</Text>
+  return (
+    <Text style={baseStyle}>
+      {parts.map((part, i) =>
+        /^₹/.test(part)
+          ? <Text key={i} style={{ fontWeight: '800', color }}>{part}</Text>
+          : <Text key={i}>{part}</Text>
+      )}
+    </Text>
+  )
+}
 
 // ─── AI Reply (keyword-matching) ────────────────────────────────────────
 function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profile: Profile | null) {
@@ -148,6 +171,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   ])
   const [chatInput, setChatInput] = useState('')
   const [typing, setTyping] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const chatScroll = useRef<ScrollView>(null)
   const mainScroll = useRef<ScrollView>(null)
 
@@ -358,6 +382,35 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const flow = engineResult?.flow
   const scoreColor = status?.status === 'on track' ? GREEN : status?.status === 'slightly off track' ? ORANGE : RED
 
+  // Build structured app report
+  const appReport = buildAppReport(engineResult, aiReport)
+  const reportScore = appReport?.score ?? 0
+  const reportScoreColor = reportScore >= 80 ? GREEN : reportScore >= 60 ? ORANGE : RED
+
+  const toggleSection = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const downloadReport = async () => {
+    const text = generateDownloadReport({
+      engineResult,
+      profile,
+      goals,
+      assets,
+      transactions: txns,
+      aiReport,
+    })
+    try {
+      await Share.share({
+        title: `ArthFlow Financial Report`,
+        message: text,
+      })
+    } catch (e) {
+      console.error('Share error:', e)
+    }
+  }
+
   const greeting = () => {
     const h = new Date().getHours()
     const name = profile?.full_name?.split(' ')[0] ?? 'there'
@@ -403,152 +456,218 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Status Hero ─── */}
+        {/* ══ 1. FINANCIAL HEALTH SCORE ══════════════════════ */}
         <View style={s.heroCard}>
           <View style={s.heroGlow} />
           <View style={s.heroContent}>
+            <Text style={s.heroMonth}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>
             <Text style={s.greeting}>{greeting()}</Text>
-            <View style={s.pulseCard}>
-              <Text style={s.pulseTxt}>{pulseMsg()}</Text>
-            </View>
 
-            {/* Engine Status */}
-            {status && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                <View style={[s.statusBadge, { borderColor: scoreColor }]}>
-                  <Text style={{ fontSize: 18 }}>{status.emoji}</Text>
-                  <Text style={[s.statusLabel, { color: scoreColor }]}>{status.status}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.statusMsg}>{status.message}</Text>
-                  {flow && (
-                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
-                      <View>
-                        <Text style={s.flowLabel}>Saving</Text>
-                        <Text style={s.flowValue}>{flow.savingsPct}%</Text>
-                      </View>
-                      <View>
-                        <Text style={s.flowLabel}>Needs</Text>
-                        <Text style={s.flowValue}>{flow.needsPct}%</Text>
-                      </View>
-                      <View>
-                        <Text style={s.flowLabel}>Wants</Text>
-                        <Text style={s.flowValue}>{flow.wantsPct}%</Text>
-                      </View>
+            {/* Score display */}
+            <View style={s.scoreRow}>
+              <HealthScoreRing
+                score={appReport?.score ?? 0}
+                label={appReport?.scoreLabel}
+                subtitle={appReport?.scoreLabel ? undefined : 'Loading…'}
+              />
+              <View style={{ flex: 1, marginLeft: 16 }}>
+                {highlightRupee(appReport?.summary ?? '', RUPEE_ACCENT_LIGHT, s.scoreSummary)}
+                {flow && (
+                  <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+                    <View>
+                      <Text style={s.flowLabel}>Saving</Text>
+                      <Text style={s.flowValue}>{flow.savingsPct}%</Text>
                     </View>
-                  )}
-                </View>
+                    <View>
+                      <Text style={s.flowLabel}>Needs</Text>
+                      <Text style={s.flowValue}>{flow.needsPct}%</Text>
+                    </View>
+                    <View>
+                      <Text style={s.flowLabel}>Wants</Text>
+                      <Text style={s.flowValue}>{flow.wantsPct}%</Text>
+                    </View>
+                  </View>
+                )}
               </View>
-            )}
+            </View>
           </View>
         </View>
 
-        {/* ── AI Financial Report Dashboard ─── */}
-        {aiReport && (
+        {/* ══ 2. TOP PROBLEMS ════════════════════════════════ */}
+        {appReport?.top_problems && appReport.top_problems.length > 0 && (
           <View>
-            {/* Score Card */}
-            <View style={s.dashCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 18 }}>🤖</Text>
-                  <Text style={s.dashTitle}>Financial Health</Text>
-                </View>
-                <View style={[s.scoreBadge, {
-                  backgroundColor: (aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED) + '18'
-                }]}>
-                  <Text style={[s.scoreText, {
-                    color: aiReport.score >= 80 ? GREEN : aiReport.score >= 60 ? ORANGE : RED
-                  }]}>{aiReport.score}/100 · {aiReport.scoreLabel}</Text>
-                </View>
+            <View style={s.sectionRow}>
+              <Text style={{ fontSize: 15 }}>🚨</Text>
+              <Text style={s.sectionTitle}>Top Problems</Text>
+              <View style={s.countBadge}>
+                <Text style={s.countTxt}>{appReport.top_problems.length}</Text>
               </View>
-              <Text style={s.dashSummary}>{aiReport.summary}</Text>
             </View>
-
-            {/* Each section as its own card */}
-            {aiReport.sections?.map((sec: any, i: number) => (
-              <View key={i} style={s.sectionCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <View style={s.sectionIconWrap}>
-                    <Text style={{ fontSize: 18 }}>{sec.icon}</Text>
-                  </View>
-                  <Text style={s.sectionCardTitle}>{sec.title}</Text>
-                </View>
-                {sec.items?.map((item: string, j: number) => (
-                  <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6, paddingLeft: 4 }}>
-                    <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
-                    <Text style={s.sectionItemText}>{item}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-
-            {/* Protection Checklist Card */}
-            {aiReport.protectionChecklist?.length > 0 && (
-              <View style={s.protectionCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                    <Text style={{ fontSize: 18 }}>🛡️</Text>
-                  </View>
-                  <View>
-                    <Text style={s.sectionCardTitle}>Protection Checklist</Text>
-                    <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
-                  </View>
-                </View>
-                {aiReport.protectionChecklist.map((p: any, i: number) => {
-                  const statusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
-                  const statusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
-                  const statusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
-                  return (
-                    <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                        <Text style={{ fontSize: 16 }}>{p.icon}</Text>
-                        <Text style={s.protectionName}>{p.item}</Text>
-                        <View style={[s.protectionBadge, { backgroundColor: statusBg }]}>
-                          <Text style={[s.protectionBadgeTxt, { color: statusColor }]}>{statusLabel}</Text>
-                        </View>
-                      </View>
-                      <View style={{ paddingLeft: 30 }}>
-                        <View style={s.protectionDetail}>
-                          <Text style={s.protectionLabel}>Have</Text>
-                          <Text style={s.protectionValue}>{p.have}</Text>
-                        </View>
-                        <View style={s.protectionDetail}>
-                          <Text style={s.protectionLabel}>Need</Text>
-                          <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
-                        </View>
-                        {p.action && (
-                          <View style={[s.protectionAction, { backgroundColor: statusBg }]}>
-                            <Text style={{ fontSize: 12, color: statusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
-                          </View>
-                        )}
-                      </View>
+            {appReport.top_problems.map((p: any, i: number) => {
+              const sevColor = p.severity === 'high' ? RED : p.severity === 'medium' ? ORANGE : TXT2
+              const sevBg = p.severity === 'high' ? RED_L : p.severity === 'medium' ? ORANGE_L : BG_SEC
+              return (
+                <View key={i} style={[s.problemCard, { borderLeftColor: sevColor }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <View style={[s.sevBadge, { backgroundColor: sevBg }]}>
+                      <Text style={[s.sevBadgeTxt, { color: sevColor }]}>
+                        {p.severity === 'high' ? '🔴 HIGH' : p.severity === 'medium' ? '🟡 MEDIUM' : '🔵 LOW'}
+                      </Text>
                     </View>
-                  )
-                })}
-              </View>
-            )}
-
-            {/* Asset Recommendations */}
-            {aiReport.assetAdvice?.length > 0 && (
-              <View style={s.sectionCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <View style={[s.sectionIconWrap, { backgroundColor: TEAL_L }]}>
-                    <Text style={{ fontSize: 18 }}>📊</Text>
                   </View>
-                  <Text style={s.sectionCardTitle}>Asset Recommendations</Text>
+                  <Text style={s.problemTitle}>{p.title}</Text>
+                  <Text style={s.problemImpact} numberOfLines={2}>{highlightRupee(p.impact, sevColor, undefined)}</Text>
                 </View>
-                {aiReport.assetAdvice.map((a: any, i: number) => (
-                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, paddingLeft: 4 }}>
-                    <Text style={{ fontSize: 11, color: TEAL, marginTop: 2 }}>→</Text>
-                    <Text style={{ fontSize: 13, color: TXT2, fontFamily: 'Manrope_400Regular', flex: 1, lineHeight: 19 }}>
-                      <Text style={{ fontWeight: '700', color: TXT1 }}>{a.asset}: </Text>{a.suggestion}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
+              )
+            })}
           </View>
         )}
+
+        {/* ══ 3. ACTION PLAN ═════════════════════════════════ */}
+        {appReport?.action_plan && appReport.action_plan.length > 0 && (
+          <View style={s.actionCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <Text style={{ fontSize: 15 }}>✅</Text>
+              <Text style={s.sectionTitle}>Action Plan</Text>
+            </View>
+            {appReport.action_plan.map((a: any, i: number) => {
+              const prioColor = a.priority === 'high' ? RED : a.priority === 'medium' ? ORANGE : GREEN
+              return (
+                <View key={i} style={s.actionStep}>
+                  <View style={[s.stepNumber, { backgroundColor: prioColor + '18' }]}>
+                    <Text style={[s.stepNumberTxt, { color: prioColor }]}>{a.step}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.actionTitle}>{a.title}</Text>
+                    <Text style={s.actionDesc} numberOfLines={2}>{highlightRupee(a.description, prioColor, undefined)}</Text>
+                    <View style={[s.amountChip, { backgroundColor: prioColor + '12' }]}>
+                      <Text style={[s.amountChipTxt, { color: prioColor }]}>₹{a.monthly_amount?.toLocaleString('en-IN')}/month</Text>
+                    </View>
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        )}
+
+        {/* ══ 4. QUICK SUMMARY ═══════════════════════════════ */}
+        {appReport?.quick_summary && appReport.quick_summary.length > 0 && (
+          <View style={s.summaryCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Text style={{ fontSize: 15 }}>📊</Text>
+              <Text style={s.sectionTitle}>Quick Summary</Text>
+            </View>
+            {appReport.quick_summary.map((item: string, i: number) => (
+              <View key={i} style={s.summaryRow}>
+                <Text style={s.summaryBullet}>•</Text>
+                {highlightRupee(item, BLUE, s.summaryText)}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ══ 5. COLLAPSIBLE DETAILED SECTIONS ═══════════════ */}
+        {appReport?.collapsible_sections && appReport.collapsible_sections.length > 0 && (
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Text style={{ fontSize: 15 }}>🔍</Text>
+              <Text style={s.sectionTitle}>Detailed Analysis</Text>
+            </View>
+            {appReport.collapsible_sections.map((sec: any) => (
+              <View key={sec.id} style={s.collapseCard}>
+                <TouchableOpacity
+                  style={s.collapseHeader}
+                  onPress={() => toggleSection(sec.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={s.sectionIconWrap}>
+                    <Text style={{ fontSize: 16 }}>{sec.icon}</Text>
+                  </View>
+                  <Text style={s.collapseTitle}>{sec.title}</Text>
+                  <Text style={s.collapseArrow}>{expanded[sec.id] ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {expanded[sec.id] && (
+                  <View style={s.collapseBody}>
+                    {sec.items?.map((item: string, j: number) => (
+                      <View key={j} style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+                        <Text style={{ fontSize: 10, color: BLUE, marginTop: 4 }}>●</Text>
+                        <Text style={s.sectionItemText} numberOfLines={2}>{highlightRupee(item, BLUE, undefined)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ══ PROTECTION CHECKLIST ═══════════════════════════ */}
+        {appReport?.protectionChecklist?.length > 0 && (
+          <View style={s.protectionCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                <Text style={{ fontSize: 18 }}>🛡️</Text>
+              </View>
+              <View>
+                <Text style={s.sectionCardTitle}>Protection Checklist</Text>
+                <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+              </View>
+            </View>
+            {appReport.protectionChecklist.map((p: any, i: number) => {
+              const pStatusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
+              const pStatusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
+              const pStatusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'
+              return (
+                <View key={i} style={[s.protectionRow, i > 0 && { borderTopWidth: 1, borderTopColor: BORDER }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <Text style={{ fontSize: 16 }}>{p.icon}</Text>
+                    <Text style={s.protectionName}>{p.item}</Text>
+                    <View style={[s.protectionBadge, { backgroundColor: pStatusBg }]}>
+                      <Text style={[s.protectionBadgeTxt, { color: pStatusColor }]}>{pStatusLabel}</Text>
+                    </View>
+                  </View>
+                  <View style={{ paddingLeft: 30 }}>
+                    <View style={s.protectionDetail}>
+                      <Text style={s.protectionLabel}>Have</Text>
+                      <Text style={s.protectionValue}>{p.have}</Text>
+                    </View>
+                    <View style={s.protectionDetail}>
+                      <Text style={s.protectionLabel}>Need</Text>
+                      <Text style={[s.protectionValue, { color: BLUE, fontWeight: '700' }]}>{p.need}</Text>
+                    </View>
+                    {p.action && (
+                      <View style={[s.protectionAction, { backgroundColor: pStatusBg }]}>
+                        <Text style={{ fontSize: 12, color: pStatusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        )}
+
+        {/* ══ WHAT-IF SIMULATOR ═════════════════════════ */}
+        <WhatIfSimulator
+          goals={goals}
+          currentSavings={flow?.savings ?? 0}
+          income={flow?.income ?? 0}
+        />
+
+        {/* ══ DOWNLOAD REPORT ═══════════════════════════════ */}
+        <View style={s.downloadCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <Text style={{ fontSize: 20 }}>📄</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.downloadTitle}>Download Full Report</Text>
+              <Text style={s.downloadSub}>Get detailed analysis for your records</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={s.downloadBtn} onPress={downloadReport} activeOpacity={0.85}>
+            <Text style={s.downloadBtnTxt}>Export Report</Text>
+            <Text style={s.downloadBtnArrow}>↗</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── AI Chat (always visible) ─── */}
         <View style={{ marginTop: 20 }}>
@@ -634,42 +753,65 @@ const s = StyleSheet.create({
   badge: { backgroundColor: TEAL_L, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   badgeTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: TEAL },
 
-  // Hero card
-  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
+  // Hero / Score card
+  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 18, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
-  greeting: { fontSize: 22, fontFamily: 'Manrope_700Bold', color: '#fff', marginBottom: 8 },
-  pulseCard: { borderRadius: 16, padding: 14, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)' },
-  pulseTxt: { fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 21, fontFamily: 'Manrope_400Regular', fontWeight: '600' },
-
-  // Engine status
-  statusBadge: { borderRadius: 16, borderWidth: 2, padding: 12, alignItems: 'center', gap: 4, width: 80 },
-  statusLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-  statusMsg: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19, fontFamily: 'Manrope_400Regular' },
+  heroMonth: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
+  greeting: { fontSize: 20, fontFamily: 'Manrope_700Bold', color: '#fff', marginBottom: 14 },
+  scoreRow: { flexDirection: 'row', alignItems: 'center' },
+  scoreCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  scoreNumber: { fontSize: 28, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  scoreOf: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_700Bold', marginTop: -2 },
+  scoreLabelBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 6 },
+  scoreLabelText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scoreSummary: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19, fontFamily: 'Manrope_400Regular' },
   flowLabel: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
   flowValue: { fontSize: 14, color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 1 },
 
   // Section headers
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { fontSize: 16, fontFamily: 'Manrope_700Bold', color: TXT1 },
-  countBadge: { backgroundColor: ORANGE_L, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  countTxt: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: ORANGE },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontFamily: 'Manrope_700Bold', color: TXT1, flex: 1 },
+  countBadge: { backgroundColor: RED_L, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  countTxt: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: RED },
 
-  // AI Report Dashboard
-  dashCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: BLUE + '20', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  dashTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  dashSummary: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
-  scoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  scoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  // Top Problems
+  problemCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: BORDER, borderLeftWidth: 4 },
+  sevBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  sevBadgeTxt: { fontSize: 10, fontWeight: '800', fontFamily: 'Manrope_700Bold', letterSpacing: 0.5 },
+  problemTitle: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 4 },
+  problemImpact: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
 
-  // Section cards
-  sectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER },
-  sectionIconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: BLUE_L, alignItems: 'center', justifyContent: 'center' },
+  // Action Plan
+  actionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: GREEN + '30', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  actionStep: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  stepNumber: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  stepNumberTxt: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  actionTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 2 },
+  actionDesc: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular', marginBottom: 6 },
+  amountChip: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
+  amountChipTxt: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+
+  // Quick Summary
+  summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
+  summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 6, alignItems: 'flex-start' },
+  summaryBullet: { fontSize: 14, color: BLUE, fontWeight: '700', marginTop: 1 },
+  summaryText: { fontSize: 14, color: TXT1, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
+
+  // Collapsible sections
+  collapseCard: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
+  collapseHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  collapseTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  collapseArrow: { fontSize: 12, color: TXT3 },
+  collapseBody: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 0 },
+
+  // Section cards (shared)
+  sectionIconWrap: { width: 34, height: 34, borderRadius: 11, backgroundColor: BLUE_L, alignItems: 'center', justifyContent: 'center' },
   sectionCardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   sectionItemText: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
 
   // Protection checklist
-  protectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
+  protectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
   protectionRow: { paddingVertical: 12 },
   protectionName: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
   protectionBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
@@ -678,6 +820,14 @@ const s = StyleSheet.create({
   protectionLabel: { fontSize: 11, color: TXT3, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', width: 40 },
   protectionValue: { fontSize: 13, color: TXT1, fontFamily: 'Manrope_400Regular', flex: 1 },
   protectionAction: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
+
+  // Download report
+  downloadCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: BLUE + '20', borderStyle: 'dashed' },
+  downloadTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  downloadSub: { fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 2 },
+  downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: BLUE, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, marginTop: 4 },
+  downloadBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15, fontFamily: 'Manrope_700Bold' },
+  downloadBtnArrow: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 8 },
 
   // Chat
   chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderRadius: 16, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, padding: 16, borderWidth: 1, borderBottomWidth: 0, borderColor: BORDER },
