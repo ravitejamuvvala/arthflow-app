@@ -361,6 +361,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         investment: engineResult.investment,
         risk: engineResult.risk,
         trend: engineResult.trend,
+        debtHealth: engineResult.debtHealth,
+        runway: engineResult.runway,
+        lifestyleCreep: engineResult.lifestyleCreep,
       } : undefined,
     }
 

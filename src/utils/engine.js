@@ -162,6 +162,50 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     monthsTracked: snapshots.length,
   }
 
+  // ─── Debt-to-Income Ratio ─────────────────────────────────
+  const emiTotal = flow.catTotals?.emis ?? 0
+  const dtiRatio = flow.income > 0 ? Math.round((emiTotal / flow.income) * 100) : 0
+  const debtHealth = {
+    dtiRatio,
+    emiAmount: emiTotal,
+    status: dtiRatio <= 30 ? 'healthy' : dtiRatio <= 40 ? 'caution' : 'danger',
+    // Banks typically reject new loans above 50% DTI
+    canTakeMoreDebt: dtiRatio < 40,
+    headroom: flow.income > 0 ? Math.max(0, Math.round(flow.income * 0.40 - emiTotal)) : 0,
+  }
+
+  // ─── Total Savings Runway (worst-case resilience) ─────────
+  const totalLiquidAssets = (Number(assets?.liquidCash) || 0) + (Number(assets?.mutualFunds) || 0) + (Number(assets?.stocks) || 0)
+  const totalRunwayMonths = monthlyExpenses > 0 ? +(totalLiquidAssets / monthlyExpenses).toFixed(1) : 0
+  const runway = {
+    liquidOnlyMonths: emergencyMonths,
+    totalMonths: totalRunwayMonths,
+    totalLiquidAssets,
+    status: totalRunwayMonths >= 12 ? 'strong' : totalRunwayMonths >= 6 ? 'adequate' : 'fragile',
+  }
+
+  // ─── Lifestyle Creep Detection ────────────────────────────
+  let lifestyleCreep = { detected: false, message: null, pctChange: 0 }
+  if (recentSnapshots.length >= 2) {
+    // Check if lifestyle spending grew while income stayed flat
+    const lifestyleNow = flow.catTotals?.lifestyle ?? 0
+    const incomeFirst = recentSnapshots[0].income || 0
+    const incomeLast = recentSnapshots[recentSnapshots.length - 1].income || 0
+    const incomeGrowth = incomeFirst > 0 ? ((incomeLast - incomeFirst) / incomeFirst) * 100 : 0
+    // Approximate prior lifestyle from spent ratio — use the oldest snapshot's spending pattern
+    const spentFirst = recentSnapshots[0].spent || 0
+    const spentLast = recentSnapshots[recentSnapshots.length - 1].spent || 0
+    const spendingGrowth = spentFirst > 0 ? ((spentLast - spentFirst) / spentFirst) * 100 : 0
+    // Creep = spending grew significantly more than income
+    if (spendingGrowth > 10 && spendingGrowth > incomeGrowth + 5) {
+      lifestyleCreep = {
+        detected: true,
+        message: `Spending up ${Math.round(spendingGrowth)}% while income ${incomeGrowth > 2 ? `only grew ${Math.round(incomeGrowth)}%` : 'stayed flat'}`,
+        pctChange: Math.round(spendingGrowth),
+      }
+    }
+  }
+
   return {
     flow,
     score,
@@ -178,6 +222,9 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     assetAnalysis,
     risk,
     trend,
+    debtHealth,
+    runway,
+    lifestyleCreep,
   }
 }
 
