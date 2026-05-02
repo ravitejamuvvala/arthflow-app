@@ -15,6 +15,7 @@ const clearLocalData = async () => {
   if (arthKeys.length) await AsyncStorage.multiRemove(arthKeys)
 }
 
+import { DataProvider } from './src/lib/DataContext'
 import AddTransactionScreen from './src/screens/AddTransactionScreen'
 import CoachScreen from './src/screens/CoachScreen'
 import GoalsScreen from './src/screens/GoalsScreen'
@@ -143,12 +144,13 @@ export default function App() {
   const darkBar = activeTab === 'coach'
 
   return (
+    <DataProvider session={session}>
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle={darkBar ? 'dark-content' : 'light-content'} translucent backgroundColor="transparent" />
       <View style={[styles.screen, { paddingTop: TOP_INSET }]}>
-        {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
+        {activeTab === 'home' && <ThisMonthScreen onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
         {activeTab === 'plan' && <GoalsScreen />}
-        {activeTab === 'coach' && <CoachScreen showReport={true} refreshTrigger={refreshKey} />}
+        {activeTab === 'coach' && <CoachScreen showReport={true} />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
 
@@ -187,6 +189,7 @@ export default function App() {
         />
       </Modal>
     </SafeAreaView>
+    </DataProvider>
   )
 }
 

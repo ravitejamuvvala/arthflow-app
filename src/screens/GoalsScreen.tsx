@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
     ActivityIndicator,
     Alert,
@@ -16,6 +16,7 @@ import {
     View
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { Goal } from '../types'
 import { commaFormat, stripCommas } from '../utils/calculations'
@@ -110,8 +111,7 @@ function buildProjection(targetAmount: number, currentSaved: number, targetYear:
 
 // ─── Main Component ─────────────────────────────────────────────────────
 export default function GoalsScreen() {
-  const [goals, setGoals] = useState<Goal[]>([])
-  const [loading, setLoading] = useState(true)
+  const { goals, loading: dataLoading, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
   const [showSheet, setShowSheet] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
@@ -133,18 +133,7 @@ export default function GoalsScreen() {
   // Sync year text when slider changes year (but not while user is typing)
   useEffect(() => { if (!yearInputFocused.current) setFYearText(String(fYear)) }, [fYear])
 
-  const fetchGoals = useCallback(async () => {
-    const { data } = await supabase
-      .from('goals')
-      .select('*')
-      .order('created_at', { ascending: true })
-    setGoals(data ?? [])
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { fetchGoals() }, [fetchGoals])
-
-  const onRefresh = async () => { setRefreshing(true); await fetchGoals(); setRefreshing(false) }
+  const onRefresh = async () => { setRefreshing(true); await refreshData(); setRefreshing(false) }
 
   const openAdd = () => {
     setShowPresets(true)
@@ -216,7 +205,7 @@ export default function GoalsScreen() {
       await supabase.from('goals').insert(payload)
     }
     setShowSheet(false)
-    fetchGoals()
+    refreshData()
   }
 
   const deleteGoal = async () => {
@@ -226,7 +215,7 @@ export default function GoalsScreen() {
       { text: 'Delete', style: 'destructive', onPress: async () => {
         await supabase.from('goals').delete().eq('id', editGoal.id)
         setShowSheet(false)
-        fetchGoals()
+        refreshData()
       }},
     ])
   }
@@ -270,7 +259,7 @@ export default function GoalsScreen() {
     })
   }
 
-  if (loading) {
+  if (dataLoading) {
     return <View style={styles.center}><ActivityIndicator color={BLUE} size="large" /></View>
   }
 

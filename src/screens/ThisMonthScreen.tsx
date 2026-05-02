@@ -1,25 +1,26 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import TopActionCard from '../components/TopActionCard'
 import { fetchAiReport } from '../lib/api'
+import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
-import { Goal, Profile, Transaction } from '../types'
+import { Transaction } from '../types'
 import { commaFormat, fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory, stripCommas } from '../utils/calculations'
-import { getTopAction, runEngine } from '../utils/engine'
+import { getTopAction } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -92,18 +93,11 @@ function autoClassify(desc: string): { cat: string; emoji: string } | null {
   return null
 }
 
-export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refreshTrigger }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void; refreshTrigger?: number }) {
-  const [loading, setLoading] = useState(true)
+export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void }) {
+  const { profile, transactions, goals, assets, engineResult, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
-  const [userName, setUserName] = useState('')
-  const [userAge, setUserAge] = useState(28)
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [goals, setGoals] = useState<Goal[]>([])
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [assets, setAssets] = useState<any>(null)
-  const [engineResult, setEngineResult] = useState<any>(null)
 
-  // AI Report
+  // AI Report (screen-local — display concern only)
   const [aiReport, setAiReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportStale, setReportStale] = useState(false)
@@ -121,7 +115,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   // Income override
   const [showIncomeSheet, setShowIncomeSheet] = useState(false)
   const [incomeInput, setIncomeInput] = useState('')
-  const [incomeOverride, setIncomeOverride] = useState<number | null>(null)
 
   // Onboarding expense edit
   const [showOnbExpSheet, setShowOnbExpSheet] = useState(false)
@@ -130,64 +123,18 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   const [onbExpAmount, setOnbExpAmount] = useState('')
   const [carryItems, setCarryItems] = useState<Set<string>>(new Set())
 
-  const fetchData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  // Derived values from shared context
+  const userName = profile?.full_name || 'there'
+  const userAge = profile?.age ?? 0
 
-    const fourMonthsAgo = new Date()
-    fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 3)
-    fourMonthsAgo.setDate(1)
-    fourMonthsAgo.setHours(0, 0, 0, 0)
+  const loadAiReport = useCallback(async () => {
+    if (!engineResult?.flow || !profile) return
+    const flow = engineResult.flow
+    const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
+    const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
+    const baseIncome = incomeOverride ?? profile?.monthly_income ?? 0
+    if (baseIncome === 0 && thisMonthTx.length === 0) return
 
-    const [profileRes, txRes, goalRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('transactions').select('*').gte('date', fourMonthsAgo.toISOString()).order('date', { ascending: false }),
-      supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-    ])
-
-    const p = profileRes.data
-    const txs = txRes.data ?? []
-    const g = goalRes.data ?? []
-
-    setProfile(p)
-    setTransactions(txs)
-    setGoals(g)
-    setUserName(p?.full_name || user.email?.split('@')[0] || 'there')
-    setUserAge(p?.age ?? 0)
-
-    // Load assets from AsyncStorage
-    let assetData = null
-    try {
-      const raw = await AsyncStorage.getItem('@arthflow_assets')
-      if (raw) assetData = JSON.parse(raw)
-    } catch {}
-    setAssets(assetData)
-
-    // Run engine
-    const baseIncome = incomeOverride ?? p?.monthly_income ?? 0
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-    const thisMonthTx = txs.filter(t => new Date(t.date) >= startOfMonth)
-
-    const result = runEngine({
-      income: baseIncome,
-      transactions: thisMonthTx,
-      goals: g,
-      assets: assetData,
-      age: p?.age ?? 0,
-      profile: p,
-    })
-    setEngineResult(result)
-    setLoading(false)
-
-    // Fetch AI report in background (only if user has some data)
-    if (baseIncome > 0 || thisMonthTx.length > 0) {
-      loadAiReport(p, thisMonthTx, g, assetData, result.flow)
-    }
-  }, [incomeOverride])
-
-  const loadAiReport = async (p: any, txs: Transaction[], g: Goal[], assetData: any, flow: any) => {
     setReportLoading(true)
     try {
       const cached = await AsyncStorage.getItem('@arthflow_ai_report')
@@ -196,22 +143,20 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         const cachedDate = new Date(parsed.ts)
         const now = new Date()
         const sameMonth = cachedDate.getFullYear() === now.getFullYear() && cachedDate.getMonth() === now.getMonth()
-        // Use cache if same month and less than 6 hours old
         if (sameMonth && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
           setAiReport(parsed.report)
           setReportLoading(false)
           return
         }
-        // If different month, auto-expire (month-end refresh)
       }
     } catch {}
     try {
-      const income = flow?.income ?? p?.monthly_income ?? 0
+      const income = flow?.income ?? profile?.monthly_income ?? 0
       const spent = flow?.totalSpent ?? 0
       const report = await fetchAiReport({
-        profile: p,
-        transactions: txs,
-        goals: g.map(goal => {
+        profile,
+        transactions: thisMonthTx,
+        goals: goals.map(goal => {
           const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
           const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
           const monthsLeft = yearsLeft * 12
@@ -219,7 +164,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
           return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
         }),
-        assets: assetData,
+        assets,
         monthlyFlow: {
           income,
           spent,
@@ -238,27 +183,22 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
     } finally {
       setReportLoading(false)
     }
-  }
+  }, [engineResult, profile, transactions, goals, assets, incomeOverride])
 
-  useEffect(() => { fetchData() }, [fetchData])
-  useEffect(() => {
-    if (refreshTrigger && refreshTrigger > 0) {
-      setReportStale(true)
-      fetchData()
-    }
-  }, [refreshTrigger])
+  useEffect(() => { loadAiReport() }, [loadAiReport])
+
   const onRefresh = async () => {
     setRefreshing(true)
     setReportStale(false)
     await AsyncStorage.removeItem('@arthflow_ai_report')
-    await fetchData()
+    await refreshData()
     setRefreshing(false)
   }
 
   const forceRefreshReport = async () => {
     setReportStale(false)
     await AsyncStorage.removeItem('@arthflow_ai_report')
-    await fetchData()
+    await refreshData()
   }
 
   const firstName = userName.split(' ')[0]
@@ -305,13 +245,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
     }
     if (editItem) await supabase.from('transactions').update(payload).eq('id', editItem.id)
     else await supabase.from('transactions').insert(payload)
-    setShowExpSheet(false); fetchData()
+    setShowExpSheet(false); refreshData()
   }
 
   const deleteExpense = async () => {
     if (!editItem) return
     await supabase.from('transactions').delete().eq('id', editItem.id)
-    setShowExpSheet(false); fetchData()
+    setShowExpSheet(false); refreshData()
   }
 
   if (loading || !engineResult) {
@@ -348,7 +288,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       })
     }
     setCarryItems(new Set())
-    fetchData()
+    refreshData()
   }
 
   const snapshots = getMonthlySnapshots(transactions, profile?.monthly_income)
@@ -853,7 +793,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
                 await supabase.from('profiles').update({ [onbExpKey]: val }).eq('id', user.id)
                 await AsyncStorage.removeItem('@arthflow_ai_report')
                 setShowOnbExpSheet(false)
-                fetchData()
+                refreshData()
               }}>
               <Text style={s.saveBtnText}>Save</Text>
             </TouchableOpacity>

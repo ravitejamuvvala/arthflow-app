@@ -19,10 +19,9 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import HealthScoreRing from '../components/HealthScoreRing'
 import WhatIfSimulator from '../components/WhatIfSimulator'
 import { fetchAiChat, fetchAiReport } from '../lib/api'
-import { supabase } from '../lib/supabase'
+import { useAppData } from '../lib/DataContext'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr } from '../utils/calculations'
-import { runEngine } from '../utils/engine'
 import { buildAppReport, generateDownloadReport } from '../utils/report'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
@@ -168,14 +167,9 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 // ═════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
-export default function CoachScreen({ showReport, refreshTrigger }: { showReport?: boolean; refreshTrigger?: number }) {
-  const [loading, setLoading] = useState(true)
+export default function CoachScreen({ showReport }: { showReport?: boolean }) {
+  const { profile, transactions, goals, assets, engineResult, loading: dataLoading, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
-  const [txns, setTxns] = useState<Transaction[]>([])
-  const [goals, setGoals] = useState<Goal[]>([])
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [assets, setAssets] = useState<any>(null)
-  const [engineResult, setEngineResult] = useState<any>(null)
   const [aiReport, setAiReport] = useState<any>(null)
 
   // Chat
@@ -204,109 +198,62 @@ export default function CoachScreen({ showReport, refreshTrigger }: { showReport
     Animated.parallel([anim(dot1, 0), anim(dot2, 150), anim(dot3, 300)]).start()
   }, [dot1, dot2, dot3])
 
-  const loadData = useCallback(async () => {
+  // Load AI report from cache on mount or when engine changes
+  const loadAiReport = useCallback(async () => {
+    if (!engineResult || !profile) return
+    let reportLoaded = false
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
-
-      const [txnRes, goalRes, profileRes] = await Promise.all([
-        supabase.from('transactions').select('*').gte('date', startOfMonth.toISOString()).order('date', { ascending: false }),
-        supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
-      ])
-
-      const t = txnRes.data ?? []
-      const g = goalRes.data ?? []
-      const p = profileRes.data ?? null
-
-      // Load assets from AsyncStorage
-      let loadedAssets = null
-      try {
-        const raw = await AsyncStorage.getItem('@arthflow_assets')
-        if (raw) loadedAssets = JSON.parse(raw)
-      } catch {}
-
-      setTxns(t)
-      setGoals(g)
-      setProfile(p)
-      setAssets(loadedAssets)
-
-      // Run the unified engine
-      const baseIncome = p?.monthly_income ?? t.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-      const result = runEngine({ income: baseIncome, transactions: t, goals: g, assets: loadedAssets, age: p?.age ?? 0, profile: p })
-      setEngineResult(result)
-
-      // Load AI report from cache
-      let reportLoaded = false
-      try {
-        const raw = await AsyncStorage.getItem('@arthflow_ai_report')
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-            setAiReport(parsed.report)
-            reportLoaded = true
-          }
-        }
-      } catch {}
-
-      // Show screen immediately — fetch AI report in background
-      setLoading(false)
-      setRefreshing(false)
-
-      // If no cached report, fetch fresh (non-blocking)
-      if (!reportLoaded && p) {
-        try {
-          const report = await fetchAiReport({
-            profile: p,
-            goals: g.map((goal: Goal) => {
-              const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
-              const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
-              const monthsLeft = yearsLeft * 12
-              const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
-              const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
-              return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
-            }),
-            assets: loadedAssets,
-            // Pass pre-computed engine data — backend enhances, doesn't recalculate
-            engine: {
-              flow: result.flow,
-              score: result.score,
-              scoreLabel: result.scoreLabel,
-              emergencyMonths: result.emergencyMonths,
-              investment: result.investment,
-              assetAnalysis: result.assetAnalysis,
-              risk: result.risk,
-              trend: result.trend,
-              avgGoalFunded: result.avgGoalFunded,
-            },
-          })
-          setAiReport(report)
-          await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
-        } catch (e) {
-          console.error('CoachScreen AI report fetch error:', e)
+      const raw = await AsyncStorage.getItem('@arthflow_ai_report')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed.report && parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
+          setAiReport(parsed.report)
+          reportLoaded = true
         }
       }
-    } catch (e) {
-      console.error('CoachScreen loadData error:', e)
-      setLoading(false)
-      setRefreshing(false)
+    } catch {}
+    if (!reportLoaded) {
+      try {
+        const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
+        const thisMonthTx = transactions.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
+        const report = await fetchAiReport({
+          profile,
+          goals: goals.map((goal: Goal) => {
+            const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
+            const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
+            const monthsLeft = yearsLeft * 12
+            const remaining = Math.max(0, (goal.target_amount || 0) - (goal.saved_amount || 0))
+            const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : 0
+            return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
+          }),
+          assets,
+          engine: {
+            flow: engineResult.flow,
+            score: engineResult.score,
+            scoreLabel: engineResult.scoreLabel,
+            emergencyMonths: engineResult.emergencyMonths,
+            investment: engineResult.investment,
+            assetAnalysis: engineResult.assetAnalysis,
+            risk: engineResult.risk,
+            trend: engineResult.trend,
+            avgGoalFunded: engineResult.avgGoalFunded,
+          },
+        })
+        setAiReport(report)
+        await AsyncStorage.setItem('@arthflow_ai_report', JSON.stringify({ report, ts: Date.now() }))
+      } catch (e) {
+        console.error('CoachScreen AI report fetch error:', e)
+      }
     }
-  }, [])
+  }, [engineResult, profile, transactions, goals, assets])
 
-  useEffect(() => { loadData() }, [loadData])
-  useEffect(() => {
-    if (refreshTrigger && refreshTrigger > 0) {
-      AsyncStorage.removeItem('@arthflow_ai_report').then(() => loadData())
-    }
-  }, [refreshTrigger])
+  useEffect(() => { loadAiReport() }, [loadAiReport])
+
   const onRefresh = async () => {
     setRefreshing(true)
     await AsyncStorage.removeItem('@arthflow_ai_report')
-    loadData()
+    await refreshData()
+    setRefreshing(false)
   }
 
   const sendMessage = async (text?: string) => {
@@ -319,63 +266,26 @@ export default function CoachScreen({ showReport, refreshTrigger }: { showReport
 
     setTimeout(() => chatScroll.current?.scrollToEnd({ animated: true }), 300)
 
-    // Always fetch FRESH data from Supabase before sending to AI
-    let freshTxns = txns
-    let freshGoals = goals
-    let freshProfile = profile
-    let freshAssets = assets
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const startOfMonth = new Date()
-        startOfMonth.setDate(1)
-        startOfMonth.setHours(0, 0, 0, 0)
-
-        const [txnRes, goalRes, profileRes] = await Promise.all([
-          supabase.from('transactions').select('*').gte('date', startOfMonth.toISOString()).order('date', { ascending: false }),
-          supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-          supabase.from('profiles').select('*').eq('id', user.id).single(),
-        ])
-        freshTxns = txnRes.data ?? txns
-        freshGoals = goalRes.data ?? goals
-        freshProfile = profileRes.data ?? profile
-
-        try {
-          const raw = await AsyncStorage.getItem('@arthflow_assets')
-          if (raw) freshAssets = JSON.parse(raw)
-        } catch {}
-
-        setTxns(freshTxns)
-        setGoals(freshGoals)
-        setProfile(freshProfile)
-        setAssets(freshAssets)
-      }
-    } catch (e) {
-      console.error('Failed to fetch fresh data for AI chat:', e)
-    }
-
-    // Recompute engine from fresh data so chat context is never stale
-    const baseIncome = freshProfile?.monthly_income ?? freshTxns.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-    const freshEngine = runEngine({ income: baseIncome, transactions: freshTxns, goals: freshGoals, assets: freshAssets, age: freshProfile?.age ?? 0, profile: freshProfile })
-    setEngineResult(freshEngine)
+    // Refresh shared data so engine is current
+    await refreshData()
 
     const chatContext = {
-      profile: freshProfile,
-      transactions: freshTxns.slice(0, 20),
-      goals: freshGoals,
-      assets: freshAssets,
-      engine: {
-        flow: freshEngine.flow,
-        score: freshEngine.score,
-        scoreLabel: freshEngine.scoreLabel,
-        emergencyMonths: freshEngine.emergencyMonths,
-        investment: freshEngine.investment,
-        risk: freshEngine.risk,
-        trend: freshEngine.trend,
-        debtHealth: freshEngine.debtHealth,
-        runway: freshEngine.runway,
-        lifestyleCreep: freshEngine.lifestyleCreep,
-      },
+      profile,
+      transactions: transactions.slice(0, 20),
+      goals,
+      assets,
+      engine: engineResult ? {
+        flow: engineResult.flow,
+        score: engineResult.score,
+        scoreLabel: engineResult.scoreLabel,
+        emergencyMonths: engineResult.emergencyMonths,
+        investment: engineResult.investment,
+        risk: engineResult.risk,
+        trend: engineResult.trend,
+        debtHealth: engineResult.debtHealth,
+        runway: engineResult.runway,
+        lifestyleCreep: engineResult.lifestyleCreep,
+      } : undefined,
     }
 
     try {
@@ -383,7 +293,7 @@ export default function CoachScreen({ showReport, refreshTrigger }: { showReport
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
     } catch (err) {
       console.error('AI chat error:', err)
-      const fallback = generateAIReply(msg, freshEngine, freshGoals, freshProfile)
+      const fallback = generateAIReply(msg, engineResult, goals, profile)
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
     } finally {
       setTyping(false)
@@ -391,7 +301,7 @@ export default function CoachScreen({ showReport, refreshTrigger }: { showReport
     }
   }
 
-  if (loading) {
+  if (dataLoading) {
     return <View style={s.center}><ActivityIndicator size="large" color={BLUE} /></View>
   }
 

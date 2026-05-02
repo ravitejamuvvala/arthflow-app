@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -17,8 +17,8 @@ import {
   View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
-import { Goal, Profile, Transaction } from '../types'
 import { commaFormat, stripCommas } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
@@ -103,14 +103,9 @@ function getWealthInsights(assets: AssetPortfolio, nw: number) {
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
-  const [userName, setUserName]     = useState('')
+  const { profile, transactions, goals, assets: sharedAssets, loading: dataLoading, refreshData, updateAssets } = useAppData()
   const [userEmail, setUserEmail]   = useState('')
-  const [profile, setProfile]       = useState<Profile | null>(null)
-  const [goals, setGoals]           = useState<Goal[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
   const [assets, setAssets]         = useState<AssetPortfolio>(defaultAssets)
-  const [loading, setLoading]       = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [weeklyDigest, setWeeklyDigest]   = useState(true)
@@ -134,55 +129,26 @@ export default function ProfileScreen() {
   const [activeAssetSheet, setActiveAssetSheet] = useState<keyof AssetPortfolio | null>(null)
   const [assetInputValue, setAssetInputValue] = useState('')
 
-  const fetchData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  // Sync assets from shared context
+  useEffect(() => {
+    if (sharedAssets) setAssets({ ...defaultAssets, ...sharedAssets })
+  }, [sharedAssets])
 
-    setUserEmail(user.email ?? '')
-
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-
-    const fourMonthsAgo = new Date()
-    fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 3)
-    fourMonthsAgo.setDate(1)
-    fourMonthsAgo.setHours(0, 0, 0, 0)
-
-    const [txResult, allTxResult, goalsResult, profileResult] = await Promise.all([
-      supabase.from('transactions').select('*').gte('date', startOfMonth.toISOString()),
-      supabase.from('transactions').select('*').gte('date', fourMonthsAgo.toISOString()),
-      supabase.from('goals').select('*'),
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
-    ])
-
-    setTransactions(txResult.data ?? [])
-    setAllTransactions(allTxResult.data ?? [])
-    setGoals(goalsResult.data ?? [])
-    const p = profileResult.data ?? null
-    setProfile(p)
-    setUserName(p?.full_name || user.email?.split('@')[0] || 'User')
-
-    // Load assets from AsyncStorage
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY)
-      if (raw) setAssets(JSON.parse(raw))
-    } catch {}
-
-    setLoading(false)
+  // Fetch user email once
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserEmail(user.email ?? '')
+    })
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
-  const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false) }
+  const userName = profile?.full_name || userEmail?.split('@')[0] || 'User'
+
+  const onRefresh = async () => { setRefreshing(true); await refreshData(); setRefreshing(false) }
 
   const saveAsset = (key: keyof AssetPortfolio, val: number) => {
-    setAssets(prev => {
-      const next = { ...prev, [key]: val }
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      // Clear cached AI report so Coach/Home screens use fresh asset data
-      AsyncStorage.removeItem('@arthflow_ai_report')
-      return next
-    })
+    const next = { ...assets, [key]: val }
+    setAssets(next)
+    updateAssets(next)
   }
 
   const handleSignOut = () => setShowSignOut(true)
@@ -236,11 +202,13 @@ export default function ProfileScreen() {
     )
   }
 
-  if (loading) {
+  if (dataLoading) {
     return <View style={st.center}><ActivityIndicator color={BLUE} size="large" /></View>
   }
 
-  const income     = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
+  const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
+  const income     = thisMonthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const monthlyIncome = profile?.monthly_income ?? 0
   const age = profile?.age ?? 0
 
@@ -250,7 +218,7 @@ export default function ProfileScreen() {
     const now = new Date()
     for (let i = 0; i < 24; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthTx = allTransactions.filter(t => {
+      const monthTx = transactions.filter(t => {
         const td = new Date(t.date)
         return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear()
       })
@@ -643,7 +611,7 @@ export default function ProfileScreen() {
                 }
               }
               setShowEdit(false)
-              fetchData()
+              refreshData()
             }}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' }}>✓ Save Profile</Text>
             </TouchableOpacity>
