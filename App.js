@@ -148,7 +148,7 @@ export default function App() {
       <View style={[styles.screen, { paddingTop: TOP_INSET }]}>
         {activeTab === 'home' && <ThisMonthScreen refreshTrigger={refreshKey} onNavigateCoach={() => setActiveTab('coach')} onNavigatePlan={() => setActiveTab('plan')} />}
         {activeTab === 'plan' && <GoalsScreen />}
-        {activeTab === 'coach' && <CoachScreen showReport={true} />}
+        {activeTab === 'coach' && <CoachScreen showReport={true} refreshTrigger={refreshKey} />}
         {activeTab === 'profile' && <ProfileScreen />}
       </View>
 

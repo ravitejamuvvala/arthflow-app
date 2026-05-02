@@ -168,7 +168,7 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 // ═════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
-export default function CoachScreen({ showReport }: { showReport?: boolean }) {
+export default function CoachScreen({ showReport, refreshTrigger }: { showReport?: boolean; refreshTrigger?: number }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [txns, setTxns] = useState<Transaction[]>([])
@@ -298,6 +298,11 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      AsyncStorage.removeItem('@arthflow_ai_report').then(() => loadData())
+    }
+  }, [refreshTrigger])
   const onRefresh = async () => {
     setRefreshing(true)
     await AsyncStorage.removeItem('@arthflow_ai_report')
@@ -349,24 +354,28 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       console.error('Failed to fetch fresh data for AI chat:', e)
     }
 
-    // Build context from engine — no recalculation
+    // Recompute engine from fresh data so chat context is never stale
+    const baseIncome = freshProfile?.monthly_income ?? freshTxns.filter((tx: Transaction) => tx.type === 'income').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
+    const freshEngine = runEngine({ income: baseIncome, transactions: freshTxns, goals: freshGoals, assets: freshAssets, age: freshProfile?.age ?? 0, profile: freshProfile })
+    setEngineResult(freshEngine)
+
     const chatContext = {
       profile: freshProfile,
       transactions: freshTxns.slice(0, 20),
       goals: freshGoals,
       assets: freshAssets,
-      engine: engineResult ? {
-        flow: engineResult.flow,
-        score: engineResult.score,
-        scoreLabel: engineResult.scoreLabel,
-        emergencyMonths: engineResult.emergencyMonths,
-        investment: engineResult.investment,
-        risk: engineResult.risk,
-        trend: engineResult.trend,
-        debtHealth: engineResult.debtHealth,
-        runway: engineResult.runway,
-        lifestyleCreep: engineResult.lifestyleCreep,
-      } : undefined,
+      engine: {
+        flow: freshEngine.flow,
+        score: freshEngine.score,
+        scoreLabel: freshEngine.scoreLabel,
+        emergencyMonths: freshEngine.emergencyMonths,
+        investment: freshEngine.investment,
+        risk: freshEngine.risk,
+        trend: freshEngine.trend,
+        debtHealth: freshEngine.debtHealth,
+        runway: freshEngine.runway,
+        lifestyleCreep: freshEngine.lifestyleCreep,
+      },
     }
 
     try {
@@ -374,7 +383,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
     } catch (err) {
       console.error('AI chat error:', err)
-      const fallback = generateAIReply(msg, engineResult, freshGoals, freshProfile)
+      const fallback = generateAIReply(msg, freshEngine, freshGoals, freshProfile)
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
     } finally {
       setTyping(false)

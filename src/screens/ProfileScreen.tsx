@@ -1,20 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
@@ -198,18 +198,42 @@ export default function ProfileScreen() {
   }
 
   const handleRestartOnboarding = async () => {
-    Alert.alert('Restart Onboarding', 'This will reset your financial setup. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          await supabase.from('profiles').update({ is_onboarded: false }).eq('id', user.id)
-          await supabase.auth.refreshSession()
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session) await supabase.auth.signOut()
-        }
-      }},
-    ])
+    Alert.alert(
+      '⚠️ Restart Onboarding?',
+      'This will PERMANENTLY DELETE all your data:\n\n• All transactions\n• All goals & savings progress\n• Budget estimates & income\n• AI reports & cached data\n• Asset portfolio\n\nYou will start fresh as a new user. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete Everything & Restart', style: 'destructive', onPress: async () => {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) return
+          // Delete all user data from Supabase
+          await Promise.all([
+            supabase.from('transactions').delete().eq('user_id', user.id),
+            supabase.from('goals').delete().eq('user_id', user.id),
+            supabase.from('profiles').update({
+              is_onboarded: false,
+              full_name: null,
+              monthly_income: null,
+              income_type: null,
+              expenses_essentials: null,
+              expenses_lifestyle: null,
+              expenses_emis: null,
+              age: null,
+              dob: null,
+              phone: null,
+              email: null,
+            }).eq('id', user.id),
+          ])
+          // Clear all local caches
+          await AsyncStorage.multiRemove([
+            '@arthflow_assets',
+            '@arthflow_ai_report',
+          ])
+          // Sign out so AppNavigator takes user to onboarding
+          await supabase.auth.signOut()
+        }},
+      ]
+    )
   }
 
   if (loading) {
@@ -431,7 +455,7 @@ export default function ProfileScreen() {
           <SettingsRow icon="📅" label="Monthly Plan Reset" desc="Auto-resets on 1st of each month" />
           <View style={st.settingsDivider} />
           <TouchableOpacity onPress={handleRestartOnboarding}>
-            <SettingsRow icon="🔄" label="Restart Onboarding" desc="Re-setup your money flow" />
+            <SettingsRow icon="🔄" label="Restart Onboarding" desc="Wipes all data & starts fresh" />
           </TouchableOpacity>
         </View>
       </View>

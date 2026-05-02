@@ -16,7 +16,6 @@ import {
     View
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
-import GoalArc from '../components/GoalArc'
 import { supabase } from '../lib/supabase'
 import { Goal } from '../types'
 import { commaFormat, stripCommas } from '../utils/calculations'
@@ -234,11 +233,21 @@ export default function GoalsScreen() {
 
   // ─── Computed ───────────────────────────────────────────────────
   const configuredGoals = goals.filter(g => g.target_amount > 0)
-  const totalSaved  = configuredGoals.reduce((s, g) => s + g.saved_amount, 0)
   const totalTarget = configuredGoals.reduce((s, g) => s + g.target_amount, 0)
-  const overallPct  = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0
   const needsSetupCount = goals.length - configuredGoals.length
   const thisYear    = new Date().getFullYear()
+
+  // Compute total monthly SIP needed (simple) and nearest goal
+  const goalProjections = configuredGoals.map(g => {
+    const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : thisYear + 5
+    const years = Math.max(1, targetYear - thisYear)
+    const months = years * 12
+    const remaining = Math.max(0, g.target_amount - g.saved_amount)
+    const monthlyNeeded = months > 0 ? Math.ceil(remaining / months) : 0
+    return { ...g, targetYear, yearsLeft: years, monthlyNeeded }
+  })
+  const totalMonthlySIP = goalProjections.reduce((s, g) => s + g.monthlyNeeded, 0)
+  const nearestGoal = goalProjections.filter(g => g.yearsLeft > 0).sort((a, b) => a.yearsLeft - b.yearsLeft)[0]
 
   // Year slider drag
   const { width: SCREEN_W } = Dimensions.get('window')
@@ -286,24 +295,32 @@ export default function GoalsScreen() {
           <View style={styles.heroCard}>
             <View style={styles.heroGlow} />
             <View style={styles.heroContent}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.heroLabel}>ACROSS {configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''}</Text>
-                  <Text style={styles.heroAmount}>{formatINR(totalSaved)}</Text>
-                  <Text style={styles.heroSub}>saved of {formatINR(totalTarget)} target</Text>
-                  {needsSetupCount > 0 && (
-                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular', marginTop: 4 }}>
-                      {needsSetupCount} goal{needsSetupCount !== 1 ? 's' : ''} need setup ↓
-                    </Text>
-                  )}
-                </View>
-                <View style={{ position: 'relative', width: 64, height: 64 }}>
-                  <GoalArc progress={overallPct} color={ORANGE} size={64} strokeWidth={6} bgColor="rgba(255,255,255,0.15)" />
-                  <View style={styles.heroArcText}>
-                    <Text style={styles.heroArcPct}>{overallPct}%</Text>
+              <Text style={styles.heroLabel}>{configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''} PLANNED</Text>
+              <Text style={styles.heroAmount}>{formatINR(totalTarget)}</Text>
+              <Text style={styles.heroSub}>total target</Text>
+
+              {/* Key stats row */}
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
+                {totalMonthlySIP > 0 && (
+                  <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular' }}>Monthly SIP needed</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 2 }}>{formatINR(totalMonthlySIP)}/mo</Text>
                   </View>
-                </View>
+                )}
+                {nearestGoal && (
+                  <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular' }}>Nearest goal</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 2 }} numberOfLines={1}>{nearestGoal.name}</Text>
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{nearestGoal.yearsLeft}y · {formatINR(nearestGoal.target_amount)}</Text>
+                  </View>
+                )}
               </View>
+
+              {needsSetupCount > 0 && (
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope_400Regular', marginTop: 8 }}>
+                  {needsSetupCount} goal{needsSetupCount !== 1 ? 's' : ''} need setup ↓
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -606,8 +623,6 @@ const styles = StyleSheet.create({
   heroLabel: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
   heroAmount: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
   heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
-  heroArcText: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  heroArcPct: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Goal Card
   goalCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },

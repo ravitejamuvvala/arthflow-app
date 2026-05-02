@@ -18,7 +18,7 @@ import TopActionCard from '../components/TopActionCard'
 import { fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
-import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
+import { commaFormat, fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory, stripCommas } from '../utils/calculations'
 import { getTopAction, runEngine } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
@@ -122,6 +122,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   const [showIncomeSheet, setShowIncomeSheet] = useState(false)
   const [incomeInput, setIncomeInput] = useState('')
   const [incomeOverride, setIncomeOverride] = useState<number | null>(null)
+
+  // Onboarding expense edit
+  const [showOnbExpSheet, setShowOnbExpSheet] = useState(false)
+  const [onbExpKey, setOnbExpKey] = useState<string>('')
+  const [onbExpLabel, setOnbExpLabel] = useState('')
+  const [onbExpAmount, setOnbExpAmount] = useState('')
+  const [carryItems, setCarryItems] = useState<Set<string>>(new Set())
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -263,9 +270,9 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   }
 
   // ─── Expense CRUD ──────────────────────────────────────────────
-  const openAdd = (cat?: string) => {
+  const openAdd = (cat?: string, emoji?: string) => {
     setEditItem(null); setExpDesc(''); setExpAmount('')
-    setExpCat(cat || 'essentials'); setExpEmoji('🛒')
+    setExpCat(cat || 'essentials'); setExpEmoji(emoji || '🛒')
     setExpDate(new Date().toISOString().slice(5, 10).replace('-', ' '))
     setShowExpSheet(true)
   }
@@ -316,6 +323,34 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
   const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
   const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
   const thisMonthExpenses = thisMonthTx.filter(t => t.type === 'expense')
+
+  // Previous month expenses for carry-forward
+  const prevMonthStart = new Date(); prevMonthStart.setMonth(prevMonthStart.getMonth() - 1); prevMonthStart.setDate(1); prevMonthStart.setHours(0, 0, 0, 0)
+  const prevMonthExpenses = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= prevMonthStart && new Date(t.date) < startOfMonth)
+  const uniquePrevExpenses = Object.values(
+    prevMonthExpenses.reduce((acc: Record<string, any>, t) => {
+      const key = (t.note || t.category || 'other').toLowerCase().trim()
+      if (!acc[key]) acc[key] = { id: t.id, note: t.note || t.category, category: t.category, amount: 0 }
+      acc[key].amount += t.amount
+      return acc
+    }, {})
+  ) as { id: string; note: string; category: string; amount: number }[]
+
+  const carryForward = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || carryItems.size === 0) return
+    const now = new Date().toISOString()
+    const items = uniquePrevExpenses.filter(t => carryItems.has(t.id))
+    for (const t of items) {
+      await supabase.from('transactions').insert({
+        user_id: user.id, amount: t.amount, category: t.category,
+        type: 'expense' as const, note: t.note, date: now,
+      })
+    }
+    setCarryItems(new Set())
+    fetchData()
+  }
+
   const snapshots = getMonthlySnapshots(transactions, profile?.monthly_income)
 
   return (
@@ -571,36 +606,108 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
             <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 12, color: BLUE }}>+ Add</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {Object.entries(CAT_CONFIG).map(([key, cfg]) => {
-            const total = flow.catTotals[key] || 0
-            return (
-              <TouchableOpacity key={key} style={[s.catChip, { borderColor: cfg.color + '30', backgroundColor: cfg.bg }]} onPress={() => openAdd(key)} activeOpacity={0.7}>
-                <Text style={{ fontSize: 18 }}>{cfg.emoji}</Text>
-                <Text style={[s.catAmount, { color: cfg.color }]}>{fmtInr(total)}</Text>
-                <Text style={s.catLabel}>{cfg.label}</Text>
+
+        {/* Onboarding estimates — break it down into detailed items */}
+        {flow.isEstimated && (profile?.expenses_essentials || profile?.expenses_lifestyle || profile?.expenses_emis) && (
+          <View style={{ marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 8, lineHeight: 18 }}>
+              Your onboarding estimates — tap to add detailed items
+            </Text>
+            {[
+              { key: 'needs', cat: 'essentials', emoji: '🏠', label: 'Bills & Needs', amount: (profile?.expenses_essentials ?? 0) + (profile?.expenses_emis ?? 0), color: BLUE, bg: BLUE_L, editKeys: [
+                { key: 'expenses_essentials', label: 'Essentials', amount: profile?.expenses_essentials ?? 0 },
+                { key: 'expenses_emis', label: 'EMIs', amount: profile?.expenses_emis ?? 0 },
+              ] },
+              { key: 'wants', cat: 'lifestyle', emoji: '✨', label: 'Fun & Wants', amount: profile?.expenses_lifestyle ?? 0, color: ORANGE, bg: ORANGE_L, editKeys: [
+                { key: 'expenses_lifestyle', label: 'Lifestyle', amount: profile?.expenses_lifestyle ?? 0 },
+              ] },
+            ].filter(e => e.amount > 0).map(e => (
+              <TouchableOpacity key={e.key} style={s.txRow} onPress={() => openAdd(e.cat, e.emoji)} activeOpacity={0.6}>
+                <View style={s.txLeft}>
+                  <Text style={s.txNote}>{e.emoji} {e.label}</Text>
+                  <Text style={s.txDate}>₹{commaFormat(String(e.amount))} estimated</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: e.color, fontFamily: 'Manrope_700Bold' }}>Add details →</Text>
+                  {e.editKeys.filter(ek => ek.amount > 0).map(ek => (
+                    <TouchableOpacity key={ek.key} onPress={() => { setOnbExpKey(ek.key); setOnbExpLabel(ek.label); setOnbExpAmount(commaFormat(String(ek.amount))); setShowOnbExpSheet(true) }} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 12 }}>✏️</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </TouchableOpacity>
-            )
-          })}
-        </View>
+            ))}
+          </View>
+        )}
+
+        {/* Carry forward from last month */}
+        {thisMonthExpenses.length === 0 && uniquePrevExpenses.length > 0 && (
+          <View style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold' }}>📋 REPEAT FROM LAST MONTH</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity onPress={() => {
+                  if (carryItems.size === uniquePrevExpenses.length) setCarryItems(new Set())
+                  else setCarryItems(new Set(uniquePrevExpenses.map(t => t.id)))
+                }} activeOpacity={0.7}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' }}>
+                    {carryItems.size === uniquePrevExpenses.length ? 'Deselect all' : 'Select all'}
+                  </Text>
+                </TouchableOpacity>
+                {carryItems.size > 0 && (
+                  <TouchableOpacity onPress={carryForward} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' }}>Copy ({carryItems.size}) →</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 8 }}>
+              Select recurring expenses to copy to this month
+            </Text>
+            {uniquePrevExpenses.map(t => {
+              const selected = carryItems.has(t.id)
+              return (
+                <TouchableOpacity key={t.id} style={[s.txRow, selected && { borderWidth: 1.5, borderColor: BLUE + '40' }]} onPress={() => {
+                  setCarryItems(prev => {
+                    const next = new Set(prev)
+                    if (next.has(t.id)) next.delete(t.id)
+                    else next.add(t.id)
+                    return next
+                  })
+                }} activeOpacity={0.6}>
+                  <View style={s.txLeft}>
+                    <Text style={s.txNote}>{t.note || t.category}</Text>
+                    <Text style={s.txDate}>{fmtInr(t.amount)}</Text>
+                  </View>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: selected ? BLUE : BORDER, backgroundColor: selected ? BLUE : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                    {selected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        )}
 
         {/* Recent transactions */}
         {thisMonthExpenses.length > 0 && (
-          <View style={{ marginTop: 14, maxHeight: 220 }}>
-            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          <View style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 8 }}>RECENT — tap to edit</Text>
               {thisMonthExpenses.map(t => (
-                <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.7}>
+                <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.6}>
                   <View style={s.txLeft}>
                     <Text style={s.txNote}>{t.note || t.category}</Text>
                     <Text style={s.txDate}>{new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Text>
                   </View>
-                  <Text style={s.txAmount}>-{fmtInr(t.amount)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={s.txAmount}>-{fmtInr(t.amount)}</Text>
+                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 12 }}>✏️</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-            {thisMonthExpenses.length > 4 && (
-              <Text style={{ fontSize: 10, color: TXT3, textAlign: 'center', marginTop: 4, fontFamily: 'Manrope_400Regular' }}>Scroll to see all {thisMonthExpenses.length} expenses</Text>
-            )}
           </View>
         )}
       </View>
@@ -721,6 +828,39 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
         </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Onboarding Expense Edit Sheet ─────────────── */}
+      <Modal visible={showOnbExpSheet} transparent animationType="slide" onRequestClose={() => setShowOnbExpSheet(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <TouchableOpacity style={s.sheetOverlay} activeOpacity={1} onPress={() => setShowOnbExpSheet(false)}>
+          <View style={s.sheetContainer} onStartShouldSetResponder={() => true}>
+            <View style={s.sheetHandle} />
+            <Text style={s.sheetTitle}>Edit {onbExpLabel}</Text>
+            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginTop: 4, marginBottom: 16, lineHeight: 18 }}>
+              Update your estimated monthly {onbExpLabel.toLowerCase()} for this month.
+            </Text>
+            <View style={s.amountRow}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
+              <TextInput value={onbExpAmount} onChangeText={t => setOnbExpAmount(commaFormat(t))} placeholder="0" placeholderTextColor={TXT3} keyboardType="numeric" style={s.amountInput} autoFocus />
+            </View>
+            <TouchableOpacity
+              style={[s.saveBtn, { marginTop: 12 }]}
+              onPress={async () => {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (!user || !onbExpKey) return
+                const val = Number(stripCommas(onbExpAmount))
+                if (isNaN(val) || val < 0) return
+                await supabase.from('profiles').update({ [onbExpKey]: val }).eq('id', user.id)
+                await AsyncStorage.removeItem('@arthflow_ai_report')
+                setShowOnbExpSheet(false)
+                fetchData()
+              }}>
+              <Text style={s.saveBtnText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   )
 }
@@ -794,7 +934,7 @@ const s = StyleSheet.create({
   catLabel: { fontSize: 12, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
 
   // Transactions
-  txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC },
+  txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, marginBottom: 8, backgroundColor: BG_SEC, borderRadius: 14 },
   txLeft: { flex: 1 },
   txNote: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   txDate: { fontSize: 13, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
