@@ -1,7 +1,7 @@
 // ─── Structured Report Generator ────────────────────────────────────────
 // Builds app report structure + download report text from engine output
 
-import { calculateMonthlyRequired, fmtInr } from './calculations'
+import { fmtInr } from './calculations'
 
 // ═══════════════════════════════════════════════════════════════════════
 // A. Build structured app report from engine + AI data
@@ -82,7 +82,7 @@ function buildActionPlan(engineResult) {
     plan.push({
       step: step++,
       title: `Save ${fmtInr(amt)}/month`,
-      description: 'Into a liquid fund for your emergency safety net',
+      description: 'Into a highly liquid instrument for your emergency safety net',
       outcome: monthsToFull > 0 ? `Emergency fund covered in ${monthsToFull} months` : 'Full 6-month safety net achieved',
       monthly_amount: amt,
       priority: emergencyMonths < 3 ? 'high' : 'medium',
@@ -108,7 +108,7 @@ function buildActionPlan(engineResult) {
       step: step++,
       title: `Reduce lifestyle by ${fmtInr(excess)}`,
       description: 'Dining, shopping & subscriptions are above the 30% limit',
-      outcome: `Frees up ${fmtInr(excess)}/month for savings or SIPs`,
+      outcome: `Frees up ${fmtInr(excess)}/month for savings or investments`,
       monthly_amount: excess,
       priority: 'medium',
     })
@@ -133,8 +133,8 @@ function buildActionPlan(engineResult) {
     const yearGrowth = Math.round(sipAmt * 12 * 0.12)
     plan.push({
       step: step++,
-      title: `Start SIP of ${fmtInr(sipAmt)}/month`,
-      description: 'Put your surplus to work in diversified funds',
+      title: `Invest ${fmtInr(sipAmt)}/month`,
+      description: 'Put your surplus to work via systematic investments',
       outcome: `Could grow by ~${fmtInr(yearGrowth)} in the first year`,
       monthly_amount: sipAmt,
       priority: 'low',
@@ -197,7 +197,7 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add(`• Total Expenses: ${fmtInr(flow?.totalSpent ?? 0)}`)
   add(`• Monthly Savings: ${fmtInr(flow?.savings ?? 0)} (${flow?.savingsPct ?? 0}%)`)
   add(`• Emergency Fund: ${emergencyMonths} months covered`)
-  const netWorth = assets ? Object.values(assets).reduce((s, v) => s + (Number(v) || 0), 0) : 0
+  const netWorth = engineResult?.assetAnalysis?.netWorth ?? 0
   add(`• Net Worth: ${fmtInr(netWorth)}`)
   blank()
 
@@ -244,51 +244,51 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
     add('• Recommended: Set up Emergency Fund, Retirement, and one short-term goal')
   } else {
     configuredGoals.forEach((g, i) => {
-      const calc = goalCalcs[i] || calculateMonthlyRequired(g)
-      const pct = Math.round(calc.funded * 100)
+      const calc = goalCalcs[i]
+      const pct = calc ? Math.round(calc.funded * 100) : Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
       add(`• ${g.name}:`)
       add(`  Target: ${fmtInr(g.target_amount)} | Saved: ${fmtInr(g.saved_amount || g.current_amount || 0)} (${pct}%)`)
-      add(`  Monthly Required: ${fmtInr(calc.monthlyNeeded)} | ${calc.monthsLeft} months left`)
+      if (calc) add(`  Monthly Required: ${fmtInr(calc.monthlyNeeded)} | ${calc.monthsLeft} months left`)
       add(`  Status: ${pct >= 50 ? 'On track' : 'Needs attention'}`)
     })
   }
   blank()
 
-  // 5. Investment Strategy
+  // 5. Allocation Principles
   add(divider)
-  add('5. INVESTMENT STRATEGY')
+  add('5. ALLOCATION PRINCIPLES')
   add(divider)
-  const idealEq = Math.min(80, 100 - age)
-  add(`• Recommended Equity Allocation (age ${age}): ${idealEq}%`)
-  add(`• Recommended Debt Allocation: ${100 - idealEq}%`)
-  if (flow?.savings > 0) {
-    const sipAmt = Math.round(flow.savings * 0.6)
-    add(`• Suggested SIP: ${fmtInr(sipAmt)}/month`)
-    add(`  - 60% Large-cap Index Fund (Nifty 50)`)
-    add(`  - 25% Mid/Small-cap Fund`)
-    add(`  - 15% International Fund (S&P 500)`)
+  const inv = engineResult?.investment
+  const idealEq = inv?.equityPct ?? Math.min(80, 100 - age)
+  add(`• General equity allocation guideline (age ${age}): ~${idealEq}%`)
+  add(`• General debt allocation guideline: ~${100 - idealEq}%`)
+  if (inv?.suggestedSip > 0) {
+    add(`• Investable surplus: ${fmtInr(inv.suggestedSip)}/month`)
+    add(`• Consider diversifying across large-cap, mid-cap, and international categories`)
   }
-  add(`• Use ELSS for tax saving under Section 80C`)
+  add(`• Tax-saving instruments under Section 80C can also serve as investments`)
+  add(`• Consult a SEBI-registered advisor for specific fund selection`)
   blank()
 
   // 6. Risk & Protection
   add(divider)
   add('6. RISK & PROTECTION')
   add(divider)
-  const emergencyTarget = (flow?.totalSpent ?? 0) * 6
+  const riskData = engineResult?.risk
+  const emergencyTarget = riskData?.emergencyTarget ?? (flow?.totalSpent ?? 0) * 6
   add(`• Emergency Fund:`)
   add(`  Current: ${emergencyMonths} months (${fmtInr(assets?.liquidCash ?? 0)})`)
   add(`  Target: 6 months (${fmtInr(emergencyTarget)})`)
   add(`  Status: ${emergencyMonths >= 6 ? 'Covered' : emergencyMonths >= 3 ? 'Partial — keep building' : 'Critical — top priority'}`)
   blank()
-  const termCover = income * 12 * 15
+  const termCover = riskData?.termInsuranceNeeded ?? income * 12 * 15
   add(`• Term Life Insurance:`)
   add(`  Recommended Cover: ${fmtInr(termCover)} (15× annual income)`)
-  add(`  Estimated Cost: ~₹700-900/month at age ${age}`)
+  add(`  Compare plans online for the best rates at age ${age}`)
   blank()
   add(`• Health Insurance:`)
-  add(`  Recommended: ₹10-25L family floater`)
-  add(`  Estimated Cost: ~₹700-1,000/month`)
+  add(`  Common benchmark: ₹10-25L family floater coverage`)
+  add(`  Compare plans on aggregator sites for your age group`)
   blank()
 
   // 7. 12-Month Action Plan
@@ -314,20 +314,24 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
     if (actions.every(a => a.priority !== 'low')) {
       add('  • Continue all habits above')
       add('  • Review and rebalance portfolio')
-      add('  • Reassess goals and increase SIPs with income growth')
+      add('  • Reassess goals and increase contributions with income growth')
     }
   } else {
     add('  1. Track all expenses for 30 days')
     add('  2. Set up emergency fund auto-transfer')
-    add('  3. Start a SIP in an index fund')
-    add('  4. Get term + health insurance quotes')
+    add('  3. Start systematic investments')
+    add('  4. Compare term + health insurance plans')
     add('  5. Set 2-3 financial goals with deadlines')
   }
   blank()
 
   add(doubleDivider)
-  add('Generated by ArthFlow · Your Personal Finance Intelligence')
+  add('Generated by ArthFlow · Your Personal Finance Education Tool')
   add(`Report Date: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`)
+  add('')
+  add('DISCLAIMER: This report is for educational purposes only and does not')
+  add('constitute SEBI-registered investment advice. Consult a qualified')
+  add('financial advisor before making investment decisions.')
   add(doubleDivider)
 
   return lines.join('\n')

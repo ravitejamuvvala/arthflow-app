@@ -92,42 +92,45 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
   const monthlyIncome = profile?.monthly_income ?? income
   const score = engineResult?.score ?? 50
   const investment = engineResult?.investment
+  const risk = engineResult?.risk
+
+  // Pre-computed from engine — no re-derivation
+  const limit30 = Math.round(income * 0.30)
+  const overLifestyle = lifestyle - limit30
+  const savingsGap = Math.round(income * 0.20 - saved)
+  const emergencyTarget = risk?.emergencyTarget ?? totalExp * 6
+  const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.flow?.income ?? 0))
+  const termCover = risk?.termInsuranceNeeded ?? monthlyIncome * 12 * 15
+  const eqPct = investment?.equityPct ?? Math.min(80, 100 - age)
+  const sipAmt = investment?.suggestedSip ?? Math.round(saved * 0.6)
 
   // --- Spending / overspending ---
   if (lc.includes('spending') || lc.includes('spent') || lc.includes('high') || lc.includes('review expense') || lc.includes('cut') || lc.includes('reduc') || lc.includes('expense') || lc.includes('trim')) {
-    const limit30 = Math.round(income * 0.30)
-    const overBy = lifestyle - limit30
-    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${needsPct}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overBy > 0 ? ` — ${fmtInr(overBy)} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overBy > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overBy * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
+    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${needsPct}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overLifestyle > 0 ? ` — ${fmtInr(overLifestyle)} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overLifestyle > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overLifestyle * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
   }
 
   // --- Savings ---
   if (lc.includes('saving') || lc.includes('save') || lc.includes('improve') || lc.includes('find saving') || lc.includes('boost')) {
-    const target20 = Math.round(income * 0.20)
-    const gap = target20 - saved
-    if (gap > 0) {
-      return `${name}, you're saving ${fmtInr(saved)}/month (${savePct}%). Target: ${fmtInr(target20)} (20%).\n\nHere's how to find ${fmtInr(gap)} more:\n• Cut lifestyle by 10% → saves ${fmtInr(Math.round(lifestyle * 0.1))}\n• Review subscriptions → typically ₹500–1,500/month\n• Cook 2 more meals/week → saves ~₹2,000/month\n• Auto-transfer savings on payday so you don't spend it.`
+    if (savingsGap > 0) {
+      return `${name}, you're saving ${fmtInr(saved)}/month (${savePct}%). Target: ${fmtInr(Math.round(income * 0.20))} (20%).\n\nHere's how to find ${fmtInr(savingsGap)} more:\n• Cut lifestyle by 10% → saves ${fmtInr(Math.round(lifestyle * 0.1))}\n• Review subscriptions → typically ₹500–1,500/month\n• Cook 2 more meals/week → saves ~₹2,000/month\n• Auto-transfer savings on payday so you don't spend it.`
     }
-    return `Great news, ${name}! You're saving ${savePct}% (${fmtInr(saved)}/month) — above the 20% benchmark! 🎉\n\nNext step: Put surplus into SIPs or your emergency fund.`
+    return `Great news, ${name}! You're saving ${savePct}% (${fmtInr(saved)}/month) — above the 20% benchmark! 🎉\n\nNext step: Consider putting surplus into systematic investments or your emergency fund.`
   }
 
   // --- Emergency fund ---
   if (lc.includes('emergency') || lc.includes('liquid') || lc.includes('safety net')) {
-    const needed = totalExp * 6
-    const monthly = Math.ceil(needed / 12)
-    return `${name}, your emergency fund target: ${fmtInr(needed)} (6 months × ${fmtInr(totalExp)} expenses).\nCurrently: ${emergencyMonths} months covered.\n\nPlan:\n• Keep it in a liquid mutual fund (6–7% returns, instant withdrawal)\n• Build it in 12 months: ${fmtInr(monthly)}/month\n• Don't use FDs — liquid funds are more accessible and tax-efficient\n• This is your #1 priority before investing.`
+    const monthlyBuild = Math.ceil(emergencyTarget / 12)
+    return `${name}, your emergency fund target: ${fmtInr(emergencyTarget)} (6 months × ${fmtInr(totalExp)} expenses).\nCurrently: ${emergencyMonths} months covered.\n\nPlan:\n• Keep it in a highly liquid instrument with easy withdrawal access\n• Build it in 12 months: ${fmtInr(monthlyBuild)}/month\n• Prioritise liquidity and safety over returns for this fund\n• This is your #1 priority before investing.`
   }
 
   // --- Insurance / protection ---
   if (lc.includes('insurance') || lc.includes('protect') || lc.includes('health insurance') || lc.includes('term') || lc.includes('cover')) {
-    const termCover = engineResult?.risk?.termInsuranceNeeded ?? monthlyIncome * 12 * 15
-    return `${name}, here's your insurance roadmap for age ${age}:\n\n🏥 Health Insurance:\n• Get ₹10L family floater (~₹700/mo)\n• Add super top-up for ₹50L (~₹300/mo extra)\n\n❤️ Term Life Insurance:\n• Cover: ${fmtInr(termCover)} (15× annual income)\n• Cost: ~₹700–900/month at age ${age}\n• Buy online (HDFC/ICICI/Max) — 40% cheaper\n\nTotal budget: under ${fmtInr(Math.round(monthlyIncome * 0.05))}/month (5% of income).`
+    return `${name}, here's your insurance roadmap for age ${age}:\n\n🏥 Health Insurance:\n• A common benchmark is ₹10L+ family floater coverage\n• Consider adding a super top-up for higher coverage\n\n❤️ Term Life Insurance:\n• Recommended cover: ${fmtInr(termCover)} (15× annual income)\n• Online term plans are generally more affordable than offline\n\nTotal budget: many planners suggest under ${fmtInr(Math.round(monthlyIncome * 0.05))}/month (5% of income). Compare plans on aggregator sites.`
   }
 
   // --- SIP / investing ---
   if (lc.includes('sip') || lc.includes('invest') || lc.includes('mutual') || lc.includes('surplus') || lc.includes('where to put')) {
-    const eqPct = investment?.equityPct ?? Math.min(80, 100 - age)
-    const sipAmt = Math.round(saved * 0.6)
-    return `${name}, investment plan for age ${age}:\n\n📈 SIP Allocation (${fmtInr(sipAmt)}/month):\n• 60% Large-cap Index Fund (Nifty 50)\n• 25% Mid/Small-cap Fund\n• 15% International (Nasdaq/S&P 500)\n\n🎯 Equity allocation: ${eqPct}% (rule: 100 minus age)\n💰 Use ELSS for tax saving under 80C\n\nStart today — even ${fmtInr(1000)}/month compounds to ₹25L+ in 20 years.`
+    return `${name}, general investing principles for age ${age}:\n\n📈 Amount available for investing: ${fmtInr(sipAmt)}/month\n\n🎯 A common rule of thumb: ~${eqPct}% equity, ~${100 - eqPct}% debt (based on age)\n💡 Consider diversifying across market caps and geographies\n💰 Tax-saving instruments under 80C can also serve as investments\n\nStarting early matters — even small amounts compound significantly over time. Consult a SEBI-registered advisor for specific fund selection.`
   }
 
   // --- Goals ---
@@ -140,25 +143,24 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
       const pct = calc ? Math.round(calc.funded * 100) : Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
       return `• "${g.name}": ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)})`
     }).join('\n')
-    return `${name}, here's your goal progress:\n\n${summaries}\n\n${configuredGoals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
+    return `${name}, here's your goal progress:\n\n${summaries}\n\n${configuredGoals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly contributions or reallocating from lifestyle spending.' : 'Looking good! Stay consistent with monthly contributions.'}`
   }
 
   // --- Tax ---
   if (lc.includes('tax') || lc.includes('80c') || lc.includes('deduction'))
-    return `${name}, tax saving roadmap:\n\n📋 Section 80C (₹1.5L limit):\n• PPF: ₹1.5L/year → saves ₹46,800 tax\n• ELSS: Same 80C + equity returns (3yr lock-in)\n\n📋 Section 80CCD(1B):\n• NPS: Extra ₹50K → saves ₹15,600 more\n\n📋 Section 80D:\n• Health Insurance premium: up to ₹25K\n\nTotal tax savings possible: ₹62,400+ per year.`
+    return `${name}, tax saving sections overview:\n\n📋 Section 80C (₹1.5L limit):\n• Options include PPF, ELSS, EPF, life insurance premiums, etc.\n• Max deduction: ₹1.5L/year\n\n📋 Section 80CCD(1B):\n• NPS: Additional ₹50K deduction beyond 80C\n\n📋 Section 80D:\n• Health insurance premium: up to ₹25K (₹50K for senior citizens)\n\nTotal potential tax savings: ₹62,400+ per year. Consult a tax professional for your specific situation.`
 
   // --- Lifestyle ---
   if (lc.includes('lifestyle') || lc.includes('dining') || lc.includes('shopping') || lc.includes('creep')) {
-    const limit30 = Math.round(income * 0.30)
-    return `${name}, lifestyle spending: ${fmtInr(lifestyle)}/month (${lifePct}% of income).\n\nThe 50-30-20 rule allows 30% max = ${fmtInr(limit30)}.\n\n${lifestyle > limit30 ? `You're ${fmtInr(lifestyle - limit30)} over. Try:\n• Set a weekly dining budget\n• Unsubscribe unused services\n• Use the 48-hour rule for impulse buys` : 'You\'re within the 30% limit — well done! Keep it steady.'}`
+    return `${name}, lifestyle spending: ${fmtInr(lifestyle)}/month (${lifePct}% of income).\n\nThe 50-30-20 rule allows 30% max = ${fmtInr(limit30)}.\n\n${lifestyle > limit30 ? `You're ${fmtInr(overLifestyle)} over. Try:\n• Set a weekly dining budget\n• Unsubscribe unused services\n• Use the 48-hour rule for impulse buys` : 'You\'re within the 30% limit — well done! Keep it steady.'}`
   }
 
   // --- How am I doing / overall ---
   if (lc.includes('how am i doing') || lc.includes('overall') || lc.includes('score') || lc.includes('snapshot'))
-    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n📈 Health Score: ${score}/100\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your SIP allocation and insurance coverage.'}`
+    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n📈 Health Score: ${score}/100\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your investment allocation and insurance coverage.'}`
 
   // --- Fallback ---
-  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n• Health Score: ${score}/100\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(Math.round(income * 0.20 - saved))} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent and review your SIP allocation.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
+  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n• Health Score: ${score}/100\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(savingsGap)} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent with your monthly contributions.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -176,7 +178,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
 
   // Chat
   const [messages, setMessages] = useState([
-    { id: '0', role: 'ai', text: 'Hi! I\'m your AI coach. Ask me anything about your money.' },
+    { id: '0', role: 'ai', text: 'Hi! I\'m your financial education coach. Ask me anything about your money — spending, savings, goals, or planning concepts.' },
   ])
   const [chatInput, setChatInput] = useState('')
   const [typing, setTyping] = useState(false)
@@ -906,7 +908,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           <View style={s.chatContainer}>
             {/* Quick prompts */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
-              {['How am I doing?', 'Cut expenses', 'SIP plan', 'Emergency fund', 'Tax tips', 'Insurance advice'].map(p => (
+              {['How am I doing?', 'Cut expenses', 'Investing basics', 'Emergency fund', 'Tax sections', 'Insurance basics'].map(p => (
                 <TouchableOpacity key={p} style={s.promptChip} onPress={() => sendMessage(p)}>
                   <Text style={s.promptChipTxt}>{p}</Text>
                 </TouchableOpacity>
@@ -961,6 +963,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
+            <Text style={{ fontSize: 10, color: TXT3, textAlign: 'center', marginTop: 8, lineHeight: 14, paddingHorizontal: 8 }}>
+              ⚠️ ArthFlow provides educational financial insights, not SEBI-registered investment advice. Consult a qualified advisor before investing.
+            </Text>
           </View>
         </View>
       </ScrollView>

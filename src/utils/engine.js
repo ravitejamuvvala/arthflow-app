@@ -63,7 +63,7 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const statusFromScore = getStatusFromScore(score)
 
   // Insights (top 2 only)
-  const allInsights = generateInsights({ transactions, goals, profile, assets })
+  const allInsights = generateInsights({ flow, goals, profile, assets, emergencyMonths, goalCalcs })
   const topInsights = allInsights.slice(0, 2)
 
   // Top problem + action

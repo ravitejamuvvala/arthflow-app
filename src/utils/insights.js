@@ -1,11 +1,9 @@
 // ─── Insight Generator ──────────────────────────────────────────────────
 // Returns structured, prioritised insights from financial data
 
-import { calculateMonthlyRequired, fmtInr, getMoneyFlow } from './calculations'
+import { fmtInr } from './calculations'
 
-export function generateInsights({ transactions, goals, profile, assets }) {
-  const income = profile?.monthly_income || 0
-  const flow = getMoneyFlow(transactions, income)
+export function generateInsights({ flow, goals, profile, assets, emergencyMonths: engineEmergencyMonths, goalCalcs: engineGoalCalcs }) {
   const age = profile?.age ?? 0
   const out = []
 
@@ -39,9 +37,9 @@ export function generateInsights({ transactions, goals, profile, assets }) {
 
   // ── 3. No emergency fund ─────────────────────────────────
   const liquidCash = assets?.liquidCash || 0
-  const monthlyExpenses = flow.totalSpent || (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
+  const monthlyExpenses = flow.totalSpent || 0
   const emergencyTarget = monthlyExpenses * 6
-  const emergencyMonths = monthlyExpenses > 0 ? +(liquidCash / monthlyExpenses).toFixed(1) : 0
+  const emergencyMonths = engineEmergencyMonths ?? (monthlyExpenses > 0 ? +(liquidCash / monthlyExpenses).toFixed(1) : 0)
 
   if (emergencyMonths < 3 && monthlyExpenses > 0) {
     out.push({
@@ -53,8 +51,10 @@ export function generateInsights({ transactions, goals, profile, assets }) {
   }
 
   // ── 4. Goal gap (skip goals with no target set) ──────────
-  goals.filter(g => g.target_amount > 0).forEach(g => {
-    const calc = calculateMonthlyRequired(g)
+  const configuredGoals = goals.filter(g => g.target_amount > 0)
+  configuredGoals.forEach((g, i) => {
+    const calc = engineGoalCalcs?.[i]
+    if (!calc) return
     if (calc.funded < 0.25 && calc.monthlyNeeded > flow.savings * 0.5) {
       out.push({
         type: 'warning', priority: 2,
@@ -76,12 +76,12 @@ export function generateInsights({ transactions, goals, profile, assets }) {
   }
 
   // ── 6. Insurance check (only show if no liquid assets tracked — user likely hasn't set up protection) ──
-  if (income > 0 && age > 25 && !assets?.hasInsurance) {
-    const termNeeded = income * 12 * 15
+  if (flow.income > 0 && age > 25 && !assets?.hasInsurance) {
+    const termNeeded = flow.income * 12 * 15
     out.push({
       type: 'neutral', priority: 4,
       title: `Have you checked your term insurance?`,
-      message: `At age ${age}, a ${fmtInr(termNeeded)} cover (15× income) costs ~₹700/month. Worth reviewing.`,
+      message: `At age ${age}, a common benchmark is ${fmtInr(termNeeded)} cover (15× annual income). Compare plans online.`,
       action: 'Ask coach about insurance',
     })
   }
