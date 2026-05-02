@@ -16,6 +16,23 @@ export function fmtInr(val) {
   return `₹${Math.round(val)}`
 }
 
+/** Format a number string with Indian commas (12,34,567) for live input display */
+export function commaFormat(numStr) {
+  const digits = numStr.replace(/[^0-9]/g, '')
+  if (!digits) return ''
+  const n = digits.replace(/^0+(?=\d)/, '') // strip leading zeros
+  if (n.length <= 3) return n
+  const last3 = n.slice(-3)
+  const rest = n.slice(0, -3)
+  const formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')
+  return `${formatted},${last3}`
+}
+
+/** Strip commas from formatted string → raw digit string */
+export function stripCommas(str) {
+  return (str || '').replace(/,/g, '')
+}
+
 export function getMoneyFlow(transactions, baseIncome, profile) {
   const income = baseIncome || transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const expenses = transactions.filter(t => t.type === 'expense')

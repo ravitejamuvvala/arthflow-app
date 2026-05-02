@@ -1,20 +1,20 @@
 // ─── Structured Report Generator ────────────────────────────────────────
 // Builds app report structure + download report text from engine output
 
-import { fmtInr } from './calculations'
+import { fmtInr, getBudgetRule } from './calculations'
 
 // ═══════════════════════════════════════════════════════════════════════
 // A. Build structured app report from engine + AI data
 // ═══════════════════════════════════════════════════════════════════════
 
-export function buildAppReport(engineResult, aiReport) {
+export function buildAppReport(engineResult, aiReport, age = 25) {
   if (!engineResult) return null
   const { flow, emergencyMonths, goalCalcs, allInsights, status } = engineResult
 
   // Use engine's unified score — AI can override if present
   const score = aiReport?.score ?? engineResult.score ?? 50
   const scoreLabel = aiReport?.scoreLabel ?? engineResult.scoreLabel ?? getScoreLabel(score)
-  const summary = aiReport?.summary ?? buildLocalSummary(engineResult)
+  const summary = aiReport?.summary ?? buildLocalSummary(engineResult, age)
 
   // Top Problems (max 3)
   const top_problems = (allInsights || [])
@@ -27,7 +27,7 @@ export function buildAppReport(engineResult, aiReport) {
     }))
 
   // Action Plan (max 5)
-  const action_plan = buildActionPlan(engineResult)
+  const action_plan = buildActionPlan(engineResult, age)
 
   // Quick Summary bullets
   const quick_summary = buildQuickSummary(engineResult)
@@ -58,20 +58,22 @@ function getScoreLabel(score) {
   return 'Needs Work'
 }
 
-function buildLocalSummary(engineResult) {
+function buildLocalSummary(engineResult, age = 25) {
   if (!engineResult?.flow) return 'Add transactions to see your financial summary.'
   const { flow, emergencyMonths } = engineResult
+  const budget = getBudgetRule(age)
   const parts = []
-  if (flow.savingsPct >= 20) parts.push(`Saving ${flow.savingsPct}% of income`)
-  else if (flow.income > 0) parts.push(`Saving ${flow.savingsPct}% — below the 20% target`)
+  if (flow.savingsPct >= budget.savingsTarget) parts.push(`Saving ${flow.savingsPct}% of income`)
+  else if (flow.income > 0) parts.push(`Saving ${flow.savingsPct}% — below the ${budget.savingsTarget}% target`)
   if (emergencyMonths < 3) parts.push('emergency fund needs attention')
   else parts.push(`${emergencyMonths} months of emergency cover`)
   return parts.join(', ') + '.'
 }
 
-function buildActionPlan(engineResult) {
+function buildActionPlan(engineResult, age = 25) {
   if (!engineResult?.flow) return []
   const { flow, emergencyMonths, goalCalcs, risk } = engineResult
+  const budget = getBudgetRule(age)
   const plan = []
   let step = 1
 
@@ -89,25 +91,25 @@ function buildActionPlan(engineResult) {
     })
   }
 
-  if (flow.savingsPct < 20 && flow.income > 0) {
-    const gap = Math.round(flow.income * 0.20 - flow.savings)
+  if (flow.savingsPct < budget.savingsTarget && flow.income > 0) {
+    const gap = Math.round(flow.income * budget.savingsTarget / 100 - flow.savings)
     const yearlyExtra = gap * 12
     plan.push({
       step: step++,
       title: `Find ${fmtInr(gap)} more to save`,
-      description: 'Trim lifestyle & subscriptions to hit the 20% benchmark',
+      description: `Trim lifestyle & subscriptions to hit the ${budget.savingsTarget}% benchmark`,
       outcome: `That's ${fmtInr(yearlyExtra)} extra saved per year`,
       monthly_amount: gap,
       priority: flow.savingsPct < 10 ? 'high' : 'medium',
     })
   }
 
-  if (flow.wantsPct > 30 && flow.income > 0) {
-    const excess = Math.round(flow.catTotals.lifestyle - flow.income * 0.30)
+  if (flow.wantsPct > budget.wantsTarget && flow.income > 0) {
+    const excess = Math.round(flow.catTotals.lifestyle - flow.income * budget.wantsTarget / 100)
     plan.push({
       step: step++,
       title: `Reduce lifestyle by ${fmtInr(excess)}`,
-      description: 'Dining, shopping & subscriptions are above the 30% limit',
+      description: `Dining, shopping & subscriptions are above the ${budget.wantsTarget}% limit`,
       outcome: `Frees up ${fmtInr(excess)}/month for savings or investments`,
       monthly_amount: excess,
       priority: 'medium',
@@ -222,13 +224,14 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add('3. SAVINGS ANALYSIS')
   add(divider)
   const savingsPct = flow?.savingsPct ?? 0
+  const budget = getBudgetRule(age)
   add(`• Current Savings Rate: ${savingsPct}%`)
-  add(`• Target: 20% minimum`)
-  if (savingsPct < 20 && income > 0) {
-    const gap = Math.round(income * 0.20 - (flow?.savings ?? 0))
+  add(`• Target: ${budget.savingsTarget}% minimum`)
+  if (savingsPct < budget.savingsTarget && income > 0) {
+    const gap = Math.round(income * budget.savingsTarget / 100 - (flow?.savings ?? 0))
     add(`• Gap: ${fmtInr(gap)}/month needed to reach target`)
     add(`• Suggestion: Automate ${fmtInr(gap)} transfer on payday`)
-  } else if (savingsPct >= 20) {
+  } else if (savingsPct >= budget.savingsTarget) {
     add(`• Status: Exceeding target — excellent!`)
     add(`• Next Step: Invest surplus via SIPs`)
   }
@@ -297,6 +300,53 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add(`  Actual need depends on city, family size, pre-existing conditions`)
   add(`  Compare plans on aggregator sites — do not rely on this estimate alone`)
   blank()
+
+  // 6b. Debt Health
+  const dh = engineResult?.debtHealth
+  if (dh && dh.emiAmount > 0) {
+    add(`• Debt Health:`)
+    add(`  EMI Outflow: ${fmtInr(dh.emiAmount)}/month`)
+    add(`  Debt-to-Income Ratio: ${dh.dtiRatio}% (${dh.status === 'healthy' ? 'Healthy — under 30%' : dh.status === 'caution' ? 'Caution — 30-40%' : 'Danger — above 40%'})`)
+    if (dh.canTakeMoreDebt) {
+      add(`  Headroom for new EMIs: ${fmtInr(dh.headroom)}/month before hitting 40% threshold`)
+    } else {
+      add(`  ⚠️ No headroom — avoid new debt until existing EMIs reduce`)
+    }
+    blank()
+  }
+
+  // 6c. Total Savings Runway
+  const rw = engineResult?.runway
+  if (rw) {
+    add(`• Total Savings Runway:`)
+    add(`  Emergency fund only: ${rw.liquidOnlyMonths} months`)
+    add(`  All liquid assets (cash + MF + stocks): ${rw.totalMonths} months (${fmtInr(rw.totalLiquidAssets)})`)
+    add(`  Resilience: ${rw.status === 'strong' ? 'Strong — 12+ months' : rw.status === 'adequate' ? 'Adequate — 6-12 months' : 'Fragile — under 6 months'}`)
+    blank()
+  }
+
+  // 6d. Lifestyle Creep Detection
+  const lc = engineResult?.lifestyleCreep
+  if (lc?.detected) {
+    add(`• ⚠️ Lifestyle Creep Detected:`)
+    add(`  ${lc.message}`)
+    add(`  This erodes long-term wealth — review non-essential spending`)
+    blank()
+  }
+
+  // 6e. Savings & Spending Trend
+  const tr = engineResult?.trend
+  if (tr && tr.monthsTracked >= 2) {
+    add(`• Trend (last ${tr.monthsTracked} months):`)
+    add(`  Savings trend: ${tr.savingsTrend === 'improving' ? '📈 Improving' : tr.savingsTrend === 'declining' ? '📉 Declining' : '➡️ Stable'}`)
+    add(`  Spending trend: ${tr.spendingTrend === 'increasing' ? '📈 Increasing' : tr.spendingTrend === 'decreasing' ? '📉 Decreasing' : '➡️ Stable'}`)
+    if (tr.snapshots?.length > 0) {
+      tr.snapshots.forEach(snap => {
+        add(`    ${snap.label ?? snap.month ?? '—'}: Income ${fmtInr(snap.income)} | Spent ${fmtInr(snap.spent)} | Saved ${snap.savedPct}%`)
+      })
+    }
+    blank()
+  }
 
   // 7. 12-Month Action Plan
   add(divider)

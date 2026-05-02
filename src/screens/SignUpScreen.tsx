@@ -68,7 +68,7 @@ export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreen
         <View style={styles.headerRow}>
           {onCancel && (
             <TouchableOpacity onPress={onCancel} style={styles.backBtn}>
-              <Text style={styles.backBtnText}>Back</Text>
+              <Text style={styles.backBtnText}>← Back</Text>
             </TouchableOpacity>
           )}
           <Text style={styles.logo}>Sign Up</Text>
@@ -160,6 +160,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     fontFamily: 'Manrope_700Bold',
+    letterSpacing: 0.3,
   },
   logoImage: {
     width: 64,

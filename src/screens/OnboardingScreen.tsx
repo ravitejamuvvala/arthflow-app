@@ -14,6 +14,7 @@ import {
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
+import { commaFormat } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -91,11 +92,11 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
 }) {
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   const trackWidth = SCREEN_W - 80
-  const [inputText, setInputText] = useState(String(value))
+  const [inputText, setInputText] = useState(commaFormat(String(value)))
   const isFocused = useRef(false)
 
   // Sync input text when value changes from slider — but NOT while user is typing
-  useEffect(() => { if (!isFocused.current) setInputText(String(value)) }, [value])
+  useEffect(() => { if (!isFocused.current) setInputText(commaFormat(String(value))) }, [value])
 
   const onTouch = (pageX: number) => {
     const raw = ((pageX - 40) / trackWidth) * (max - min) + min
@@ -104,7 +105,8 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
   }
 
   const onInputChange = (text: string) => {
-    setInputText(text)
+    const formatted = commaFormat(text)
+    setInputText(formatted)
     // Live-sync slider as user types
     const parsed = parseInt(text.replace(/[^0-9]/g, ''), 10)
     if (!isNaN(parsed)) {
@@ -119,9 +121,9 @@ function SliderRow({ label, sublabel, value, min, max, step, color, onChange, pr
     if (!isNaN(parsed)) {
       const clamped = Math.max(min, Math.min(max, Math.round(parsed / step) * step))
       onChange(clamped)
-      setInputText(String(clamped))
+      setInputText(commaFormat(String(clamped)))
     } else {
-      setInputText(String(value))
+      setInputText(commaFormat(String(value)))
     }
   }
 
@@ -705,25 +707,25 @@ const s = StyleSheet.create({
   sliderWrap: { marginTop: 8 },
   sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sliderLabel: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '700', color: TXT1 },
-  sliderSub: { fontFamily: 'Manrope_400Regular', fontSize: 13, color: TXT3, marginTop: 1 },
+  sliderSub: { fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT3, marginTop: 1 },
   sliderBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   sliderBadgeText: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800' },
   sliderInputWrap: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#fff', gap: 2 },
   sliderInput: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '800', minWidth: 50, textAlign: 'right', paddingVertical: 2 },
   sliderInputPrefix: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700' },
-  sliderInputSuffix: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600' },
+  sliderInputSuffix: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600' },
   sliderTrackWrap: { height: 40, justifyContent: 'center', position: 'relative' },
   sliderTrackBg: { position: 'absolute', left: 0, right: 0, height: 6, borderRadius: 3, backgroundColor: BG_SEC },
   sliderTrackFill: { position: 'absolute', left: 0, height: 6, borderRadius: 3 },
   sliderThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, marginLeft: -11, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 4, borderWidth: 3, borderColor: '#fff' },
   sliderMinMax: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  sliderMinMaxText: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: TXT3 },
+  sliderMinMaxText: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT3 },
 
   // Income step
   incomeTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   incomeTypeChip: { width: '30%', flexGrow: 1, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, borderColor: BORDER, alignItems: 'center', backgroundColor: '#fff', gap: 4 },
   incomeTypeChipActive: { borderColor: BLUE, backgroundColor: BLUE, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
-  incomeTypeChipText: { fontFamily: 'Manrope_700Bold', fontSize: 13, fontWeight: '700', color: TXT2 },
+  incomeTypeChipText: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '700', color: TXT2 },
   incomeTypeChipTextActive: { color: '#fff' },
 
   // Basics step
@@ -731,7 +733,7 @@ const s = StyleSheet.create({
   textInput: { height: 52, borderRadius: 16, backgroundColor: BG_SEC, paddingHorizontal: 16, fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '700', color: TXT1 },
   riskCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 14, marginTop: 16, borderWidth: 1 },
   riskTitle: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800', color: TXT1 },
-  riskSub: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '500', color: TXT2, marginTop: 2 },
+  riskSub: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '500', color: TXT2, marginTop: 2 },
 
   // Income & Expenses step
   incomeCard: { borderRadius: 20, backgroundColor: '#fff', padding: 16, marginTop: 20, borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
@@ -743,7 +745,7 @@ const s = StyleSheet.create({
 
   // Assets step
   netWorthPreview: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 14, marginTop: 16, marginBottom: 8, backgroundColor: '#0B1B4A' },
-  netWorthLabel: { fontFamily: 'Manrope_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.4)' },
+  netWorthLabel: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.4)' },
   netWorthAmount: { fontFamily: 'Manrope_700Bold', fontSize: 20, fontWeight: '800', color: '#E0A820' },
   assetFieldCard: { borderRadius: 18, backgroundColor: '#fff', padding: 16, marginTop: 12, borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
   currencyInputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, backgroundColor: BG_SEC, height: 52, paddingHorizontal: 16, gap: 8 },
@@ -760,25 +762,25 @@ const s = StyleSheet.create({
 
   // Summary step
   summaryHero: { backgroundColor: '#0B1B4A', paddingTop: 48, paddingBottom: 32, paddingHorizontal: 24, position: 'relative', overflow: 'hidden' },
-  summaryGreeting: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 16, marginBottom: 4 },
+  summaryGreeting: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 16, marginBottom: 4 },
   summaryHeadline: { fontFamily: 'Manrope_700Bold', fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   summaryStats: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 24 },
   summaryStatVal: { fontFamily: 'Manrope_700Bold', fontSize: 18, fontWeight: '800', color: '#E0A820' },
-  summaryStatLabel: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
+  summaryStatLabel: { fontFamily: 'Manrope_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
   summaryCard: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 20, padding: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: BORDER, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 2 },
   riskIconBox: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   aiDoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   aiDoCheck: { width: 20, height: 20, borderRadius: 10, backgroundColor: GREEN_L, alignItems: 'center', justifyContent: 'center' },
-  aiDoText: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '500', color: TXT1, flex: 1 },
+  aiDoText: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '500', color: TXT1, flex: 1 },
   sebiBox: { borderRadius: 18, padding: 14, backgroundColor: ORANGE_L, borderWidth: 1, borderColor: '#FDE68A' },
-  sebiText: { fontFamily: 'Manrope_400Regular', fontSize: 11, fontWeight: '600', color: '#92400E', lineHeight: 18 },
+  sebiText: { fontFamily: 'Manrope_400Regular', fontSize: 12, fontWeight: '600', color: '#92400E', lineHeight: 19 },
 
   // Expenses summary (legacy - keep for compat)
   summaryBox: { borderRadius: 16, padding: 16, marginTop: 24, borderWidth: 1 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryRowLabel: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: TXT2 },
-  summaryRowValue: { fontFamily: 'Manrope_700Bold', fontSize: 14, fontWeight: '800', color: TXT1 },
-  summaryRowValueBig: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800' },
+  summaryRowLabel: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT2 },
+  summaryRowValue: { fontFamily: 'Manrope_700Bold', fontSize: 15, fontWeight: '800', color: TXT1 },
+  summaryRowValueBig: { fontFamily: 'Manrope_700Bold', fontSize: 16, fontWeight: '800' },
 
   // Goal chips
   goalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 24 },
@@ -796,5 +798,5 @@ const s = StyleSheet.create({
   primaryBtnArrow: { fontSize: 20, fontWeight: '300', color: '#fff' },
   backBtn: { width: 56, borderRadius: 16, borderWidth: 2, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
   backBtnText: { fontSize: 24, fontWeight: '300', color: TXT2 },
-  trustText: { fontFamily: 'Manrope_400Regular', fontSize: 13, fontWeight: '600', color: TXT3, textAlign: 'center', marginTop: 12 },
+  trustText: { fontFamily: 'Manrope_400Regular', fontSize: 14, fontWeight: '600', color: TXT3, textAlign: 'center', marginTop: 12 },
 })

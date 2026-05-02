@@ -391,7 +391,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const scoreColor = status?.status === 'on track' ? GREEN : status?.status === 'slightly off track' ? ORANGE : RED
 
   // Build structured app report
-  const appReport = buildAppReport(engineResult, aiReport)
+  const appReport = buildAppReport(engineResult, aiReport, profile?.age ?? 25)
   const reportScore = appReport?.score ?? 0
   const reportScoreColor = reportScore >= 80 ? GREEN : reportScore >= 60 ? ORANGE : RED
 
@@ -519,7 +519,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                     <Text style={s.actionTitle}>{a.title}</Text>
                     <Text style={s.actionDesc} numberOfLines={2}>{highlightRupee(a.description, prioColor, undefined)}</Text>
                     {a.outcome && (
-                      <Text style={{ fontSize: 12, color: GREEN, fontWeight: '600', marginTop: 4 }}>→ {a.outcome}</Text>
+                      <Text style={{ fontSize: 13, color: GREEN, fontWeight: '600', marginTop: 4 }}>→ {a.outcome}</Text>
                     )}
                     <View style={[s.amountChip, { backgroundColor: prioColor + '12' }]}>
                       <Text style={[s.amountChipTxt, { color: prioColor }]}>₹{a.monthly_amount?.toLocaleString('en-IN')}/month</Text>
@@ -593,18 +593,18 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
             {/* Allocation bar */}
             <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', height: 28, marginBottom: 12 }}>
               <View style={{ flex: engineResult.investment.equityPct, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Equity {engineResult.investment.equityPct}%</Text>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Equity {engineResult.investment.equityPct}%</Text>
               </View>
               <View style={{ flex: engineResult.investment.debtPct, backgroundColor: TEAL, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Debt {engineResult.investment.debtPct}%</Text>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Debt {engineResult.investment.debtPct}%</Text>
               </View>
             </View>
 
             {/* SIP suggestion */}
             <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 }}>
-              <Text style={{ fontSize: 13, color: TXT2 }}>Suggested SIP: </Text>
+              <Text style={{ fontSize: 14, color: TXT2 }}>Suggested SIP: </Text>
               <Text style={{ fontSize: 18, fontWeight: '800', color: BLUE }}>{fmtInr(engineResult.investment.suggestedSip)}</Text>
-              <Text style={{ fontSize: 13, color: TXT2 }}>/month</Text>
+              <Text style={{ fontSize: 14, color: TXT2 }}>/month</Text>
             </View>
 
             {/* Breakdown */}
@@ -615,14 +615,14 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                 { label: 'Intl', amt: engineResult.investment.allocation.international, pct: '15%' },
               ].map((b, i) => (
                 <View key={i} style={{ flex: 1, backgroundColor: BG_SEC, borderRadius: 10, padding: 8, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 10, color: TXT3, marginBottom: 2 }}>{b.label} ({b.pct})</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1 }}>{fmtInr(b.amt)}</Text>
+                  <Text style={{ fontSize: 12, color: TXT3, marginBottom: 2 }}>{b.label} ({b.pct})</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1 }}>{fmtInr(b.amt)}</Text>
                 </View>
               ))}
             </View>
 
             {/* Why line */}
-            <Text style={{ fontSize: 12, color: TXT2, fontStyle: 'italic' }}>
+            <Text style={{ fontSize: 13, color: TXT2, fontStyle: 'italic' }}>
               Based on age {profile?.age ?? '—'}, {engineResult.scoreLabel?.toLowerCase()} health score, and {fmtInr(engineResult.flow?.savings ?? 0)} monthly surplus
             </Text>
           </View>
@@ -664,21 +664,21 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
               <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', height: 24, marginBottom: 10 }}>
                 {segs.map(([key, pct]) => (
                   <View key={key} style={{ flex: pct, backgroundColor: segColors[key] || TXT3, justifyContent: 'center', alignItems: 'center' }}>
-                    {pct >= 15 && <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{labels[key] ?? key} {pct}%</Text>}
+                    {pct >= 15 && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{labels[key] ?? key} {pct}%</Text>}
                   </View>
                 ))}
               </View>
 
               {/* Risk line */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <Text style={{ fontSize: 13 }}>⚠️</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: ORANGE }}>{riskMsg}</Text>
+                <Text style={{ fontSize: 14 }}>⚠️</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: ORANGE }}>{riskMsg}</Text>
               </View>
 
               {/* Action line */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 13 }}>👉</Text>
-                <Text style={{ fontSize: 13, color: TXT2 }}>{actionMsg}</Text>
+                <Text style={{ fontSize: 14 }}>👉</Text>
+                <Text style={{ fontSize: 14, color: TXT2 }}>{actionMsg}</Text>
               </View>
             </View>
           )
@@ -746,7 +746,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                 </View>
                 <View>
                   <Text style={s.sectionTitle}>Risk & Protection</Text>
-                  <Text style={{ fontSize: 11, color: rk.riskLevel === 'high' ? RED : ORANGE, fontWeight: '600' }}>
+                  <Text style={{ fontSize: 12, color: rk.riskLevel === 'high' ? RED : ORANGE, fontWeight: '600' }}>
                     {rk.riskLevel === 'high' ? 'Needs attention' : 'Partially covered'}
                   </Text>
                 </View>
@@ -760,9 +760,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                   <View key={i} style={{ marginBottom: i < gaps.length - 1 ? 10 : 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                       <Text style={{ fontSize: 14 }}>{g.icon}</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1 }}>{badge} {g.label}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1 }}>{badge} {g.label}</Text>
                     </View>
-                    <Text style={{ fontSize: 12, color: TXT2, paddingLeft: 26 }}>{g.detail}</Text>
+                    <Text style={{ fontSize: 13, color: TXT2, paddingLeft: 26 }}>{g.detail}</Text>
                   </View>
                 )
               })}
@@ -770,11 +770,11 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
               {/* Actions */}
               {actions.length > 0 && (
                 <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: TXT3, marginBottom: 6 }}>NEXT STEPS</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: TXT3, marginBottom: 6 }}>NEXT STEPS</Text>
                   {actions.map((a, i) => (
                     <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <Text style={{ fontSize: 12 }}>👉</Text>
-                      <Text style={{ fontSize: 12, color: TXT2 }}>{a}</Text>
+                      <Text style={{ fontSize: 13 }}>👉</Text>
+                      <Text style={{ fontSize: 13, color: TXT2 }}>{a}</Text>
                     </View>
                   ))}
                 </View>
@@ -843,7 +843,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                   </View>
                   <View>
                     <Text style={s.sectionCardTitle}>Protection Checklist</Text>
-                    <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
+                    <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
                   </View>
                 </View>
                 {appReport.protectionChecklist.map((p: any, i: number) => {
@@ -870,7 +870,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                         </View>
                         {p.action && (
                           <View style={[s.protectionAction, { backgroundColor: pStatusBg }]}>
-                            <Text style={{ fontSize: 12, color: pStatusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
+                            <Text style={{ fontSize: 13, color: pStatusColor, fontFamily: 'Manrope_400Regular', fontWeight: '600' }}>→ {p.action}</Text>
                           </View>
                         )}
                       </View>
@@ -969,7 +969,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
-            <Text style={{ fontSize: 10, color: TXT3, textAlign: 'center', marginTop: 8, lineHeight: 14, paddingHorizontal: 8 }}>
+            <Text style={{ fontSize: 12, color: TXT3, textAlign: 'center', marginTop: 8, lineHeight: 16, paddingHorizontal: 8 }}>
               ⚠️ ArthFlow provides educational financial insights, not SEBI-registered investment advice. Consult a qualified advisor before investing.
             </Text>
           </View>
@@ -989,36 +989,36 @@ const s = StyleSheet.create({
   appBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 0, paddingBottom: 4, marginBottom: 2 },
   brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
   badge: { backgroundColor: TEAL_L, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  badgeTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: TEAL },
+  badgeTxt: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: TEAL },
 
   // Hero / Score card
   heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 18, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
-  heroMonth: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
+  heroMonth: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   greeting: { fontSize: 20, fontFamily: 'Manrope_700Bold', color: '#fff', marginBottom: 14 },
   scoreRow: { flexDirection: 'row', alignItems: 'center' },
   scoreCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   scoreNumber: { fontSize: 28, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
   scoreOf: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_700Bold', marginTop: -2 },
   scoreLabelBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 6 },
-  scoreLabelText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  scoreSummary: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19, fontFamily: 'Manrope_400Regular' },
-  flowLabel: { fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-  flowValue: { fontSize: 14, color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 1 },
+  scoreLabelText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scoreSummary: { fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 20, fontFamily: 'Manrope_400Regular' },
+  flowLabel: { fontSize: 12, color: 'rgba(255,255,255,0.35)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  flowValue: { fontSize: 15, color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 1 },
 
   // Section headers
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontFamily: 'Manrope_700Bold', color: TXT1, flex: 1 },
   countBadge: { backgroundColor: RED_L, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  countTxt: { fontSize: 12, fontFamily: 'Manrope_700Bold', color: RED },
+  countTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: RED },
 
   // Top Problems
   problemCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: BORDER, borderLeftWidth: 4 },
   sevBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  sevBadgeTxt: { fontSize: 10, fontWeight: '800', fontFamily: 'Manrope_700Bold', letterSpacing: 0.5 },
-  problemTitle: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 4 },
-  problemImpact: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
+  sevBadgeTxt: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold', letterSpacing: 0.5 },
+  problemTitle: { fontSize: 16, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 4 },
+  problemImpact: { fontSize: 14, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
 
   // Action Plan
   actionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: GREEN + '30', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
@@ -1028,16 +1028,16 @@ const s = StyleSheet.create({
   actionStep: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   stepNumber: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   stepNumberTxt: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  actionTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 2 },
-  actionDesc: { fontSize: 13, color: TXT2, lineHeight: 19, fontFamily: 'Manrope_400Regular', marginBottom: 6 },
+  actionTitle: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', marginBottom: 2 },
+  actionDesc: { fontSize: 14, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', marginBottom: 6 },
   amountChip: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
-  amountChipTxt: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  amountChipTxt: { fontSize: 13, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
 
   // Quick Summary
   summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 6, alignItems: 'flex-start' },
-  summaryBullet: { fontSize: 14, color: BLUE, fontWeight: '700', marginTop: 1 },
-  summaryText: { fontSize: 14, color: TXT1, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
+  summaryBullet: { fontSize: 15, color: BLUE, fontWeight: '700', marginTop: 1 },
+  summaryText: { fontSize: 15, color: TXT1, lineHeight: 22, fontFamily: 'Manrope_400Regular', flex: 1 },
 
   // Full Analysis toggle
   fullAnalysisBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE_L, borderRadius: 14, paddingVertical: 14, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '20' },
@@ -1047,30 +1047,30 @@ const s = StyleSheet.create({
   // Collapsible sections
   collapseCard: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
   collapseHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  collapseTitle: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
-  collapseArrow: { fontSize: 12, color: TXT3 },
+  collapseTitle: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  collapseArrow: { fontSize: 13, color: TXT3 },
   collapseBody: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 0 },
 
   // Section cards (shared)
   sectionIconWrap: { width: 34, height: 34, borderRadius: 11, backgroundColor: BLUE_L, alignItems: 'center', justifyContent: 'center' },
-  sectionCardTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  sectionItemText: { fontSize: 13, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular', flex: 1 },
+  sectionCardTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sectionItemText: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular', flex: 1 },
 
   // Protection checklist
   protectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
   protectionRow: { paddingVertical: 12 },
-  protectionName: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
+  protectionName: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
   protectionBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  protectionBadgeTxt: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  protectionBadgeTxt: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   protectionDetail: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  protectionLabel: { fontSize: 11, color: TXT3, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', width: 40 },
-  protectionValue: { fontSize: 13, color: TXT1, fontFamily: 'Manrope_400Regular', flex: 1 },
+  protectionLabel: { fontSize: 12, color: TXT3, fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', width: 40 },
+  protectionValue: { fontSize: 14, color: TXT1, fontFamily: 'Manrope_400Regular', flex: 1 },
   protectionAction: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
 
   // Download report
   downloadCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: BLUE + '20', borderStyle: 'dashed' },
   downloadTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  downloadSub: { fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 2 },
+  downloadSub: { fontSize: 13, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 2 },
   downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: BLUE, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, marginTop: 4 },
   downloadBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15, fontFamily: 'Manrope_700Bold' },
   downloadBtnArrow: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 8 },
@@ -1080,7 +1080,7 @@ const s = StyleSheet.create({
   chatHeaderText: { fontSize: 15, fontFamily: 'Manrope_700Bold', color: TXT1 },
   chatContainer: { backgroundColor: '#FFF', borderRadius: 16, borderTopLeftRadius: 0, borderTopRightRadius: 0, padding: 12, borderWidth: 1, borderTopWidth: 0, borderColor: BORDER },
   promptChip: { backgroundColor: BLUE_L, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
-  promptChipTxt: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: BLUE },
+  promptChipTxt: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: BLUE },
   chatList: { maxHeight: 320, marginBottom: 8 },
   bubble: { flexDirection: 'row', marginBottom: 8, alignItems: 'flex-end' },
   bubbleUser: { justifyContent: 'flex-end' },

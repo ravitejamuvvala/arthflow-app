@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
+import { commaFormat, stripCommas } from '../utils/calculations'
 
 const EXPENSE_CATEGORIES = [
   'Food & Dining', 'Transport', 'Shopping', 'Entertainment',
@@ -41,7 +42,7 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
   }
 
   const handleSubmit = async () => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    if (!amount || isNaN(Number(stripCommas(amount))) || Number(stripCommas(amount)) <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount.')
       return
     }
@@ -55,7 +56,7 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
 
     const { error } = await supabase.from('transactions').insert([{
       user_id: user?.id,
-      amount: Number(amount),
+      amount: Number(stripCommas(amount)),
       category,
       type,
       note: note || null,
@@ -117,7 +118,7 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
             placeholder="0"
             placeholderTextColor="#9CA3AF"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={t => setAmount(commaFormat(t))}
             keyboardType="number-pad"
             returnKeyType="done"
             autoFocus
@@ -181,11 +182,11 @@ const styles = StyleSheet.create({
   amountContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 36 },
   rupee: { fontSize: 36, fontWeight: '700', color: '#6B7280', marginRight: 4, fontFamily: 'Manrope_700Bold' },
   amountInput: { fontSize: 56, fontWeight: '800', color: '#111827', minWidth: 120, letterSpacing: -2, fontFamily: 'Manrope_700Bold' },
-  sectionLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12, fontFamily: 'Manrope_700Bold' },
+  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12, fontFamily: 'Manrope_700Bold' },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 },
   categoryChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E5E7EB' },
   categoryChipActive: { backgroundColor: 'rgba(30,58,138,0.08)', borderColor: '#1E3A8A' },
-  categoryText: { fontSize: 14, color: '#6B7280', fontWeight: '500', fontFamily: 'Manrope_400Regular' },
+  categoryText: { fontSize: 15, color: '#6B7280', fontWeight: '500', fontFamily: 'Manrope_400Regular' },
   categoryTextActive: { color: '#1E3A8A', fontWeight: '700', fontFamily: 'Manrope_700Bold' },
   noteInput: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, paddingHorizontal: 18, paddingVertical: 14, fontSize: 15, color: '#111827', marginBottom: 32, fontFamily: 'Manrope_400Regular' },
   submitBtn: { backgroundColor: '#1E3A8A', borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowColor: '#1E3A8A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },

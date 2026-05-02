@@ -19,6 +19,7 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import GoalArc from '../components/GoalArc'
 import { supabase } from '../lib/supabase'
 import { Goal } from '../types'
+import { commaFormat, stripCommas } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE     = '#1E3A8A'
@@ -168,7 +169,7 @@ export default function GoalsScreen() {
     setShowPresets(false)
     setEditGoal(null)
     setFEmoji(preset.emoji); setFName(preset.name)
-    setFTarget(String(preset.defaultTarget)); setFSaved('0')
+    setFTarget(commaFormat(String(preset.defaultTarget))); setFSaved('0')
     const yr = new Date().getFullYear() + preset.defaultYears
     setFYear(yr); setFYearText(String(yr))
     setFMonthly(''); setFPriority('medium')
@@ -188,7 +189,7 @@ export default function GoalsScreen() {
   const openEdit = (g: Goal) => {
     setEditGoal(g)
     setFEmoji(goalEmoji(g.name)); setFName(g.name)
-    setFTarget(String(g.target_amount)); setFSaved(String(g.saved_amount))
+    setFTarget(commaFormat(String(g.target_amount))); setFSaved(String(g.saved_amount))
     const yr = g.target_date ? new Date(g.target_date).getFullYear() : new Date().getFullYear() + 5
     setFYear(yr); setFYearText(String(yr))
     setFMonthly(''); setFPriority('medium')
@@ -197,7 +198,7 @@ export default function GoalsScreen() {
 
   const saveGoal = async () => {
     if (!fName.trim()) { Alert.alert('Enter goal name'); return }
-    if (!fTarget || Number(fTarget) <= 0) { Alert.alert('Enter valid target amount'); return }
+    if (!fTarget || Number(stripCommas(fTarget)) <= 0) { Alert.alert('Enter valid target amount'); return }
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -205,7 +206,7 @@ export default function GoalsScreen() {
     const payload = {
       user_id: user.id,
       name: fName.trim(),
-      target_amount: Number(fTarget),
+      target_amount: Number(stripCommas(fTarget)),
       saved_amount: Number(fSaved) || 0,
       target_date: `${fYear}-12-31`,
     }
@@ -450,7 +451,7 @@ export default function GoalsScreen() {
               <Text style={styles.formLabel}>TARGET AMOUNT</Text>
               <View style={styles.currencyRow}>
                 <Text style={styles.currencyPrefix}>₹</Text>
-                <TextInput value={fTarget} onChangeText={setFTarget} placeholder="0" placeholderTextColor={TXT3}
+                <TextInput value={fTarget} onChangeText={t => setFTarget(commaFormat(t))} placeholder="0" placeholderTextColor={TXT3}
                   keyboardType="number-pad" returnKeyType="done" style={styles.currencyInput} autoFocus />
               </View>
 
@@ -524,9 +525,9 @@ export default function GoalsScreen() {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  style={[styles.saveBtn, { backgroundColor: (fName.trim() && Number(fTarget) > 0) ? BLUE : BG_SEC }]}
-                  onPress={saveGoal} disabled={!fName.trim() || Number(fTarget) <= 0}>
-                  <Text style={[styles.saveBtnText, { color: (fName.trim() && Number(fTarget) > 0) ? '#fff' : TXT3 }]}>
+                  style={[styles.saveBtn, { backgroundColor: (fName.trim() && Number(stripCommas(fTarget)) > 0) ? BLUE : BG_SEC }]}
+                  onPress={saveGoal} disabled={!fName.trim() || Number(stripCommas(fTarget)) <= 0}>
+                  <Text style={[styles.saveBtnText, { color: (fName.trim() && Number(stripCommas(fTarget)) > 0) ? '#fff' : TXT3 }]}>
                     {editGoal ? 'Save Changes' : 'Create Goal'}
                   </Text>
                 </TouchableOpacity>
@@ -594,17 +595,17 @@ const styles = StyleSheet.create({
   brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
   divider: { width: 1, height: 20, backgroundColor: BORDER, marginHorizontal: 6 },
   barTitle: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  barSub: { fontSize: 12, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  barSub: { fontSize: 13, fontWeight: '600', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, shadowColor: BLUE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 4 },
-  addBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  addBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Hero
   heroCard: { borderRadius: 20, padding: 16, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 40, elevation: 12 },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroContent: { position: 'relative', zIndex: 1 },
-  heroLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
+  heroLabel: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
   heroAmount: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
-  heroSub: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
   heroArcText: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   heroArcPct: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
@@ -612,54 +613,54 @@ const styles = StyleSheet.create({
   goalCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 12, borderWidth: 1, borderColor: BORDER, shadowColor: 'rgba(30,58,138,0.08)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 24, elevation: 2 },
   goalCardWarn: { borderColor: '#FDE68A' },
   offTrackBanner: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: ORANGE_L },
-  offTrackText: { fontSize: 12, fontWeight: '700', color: ORANGE_H, fontFamily: 'Manrope_700Bold' },
+  offTrackText: { fontSize: 13, fontWeight: '700', color: ORANGE_H, fontFamily: 'Manrope_700Bold' },
   goalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   goalArcOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   goalArcPct: { fontSize: 12, fontWeight: '800', lineHeight: 14, fontFamily: 'Manrope_700Bold' },
-  goalName: { fontSize: 15, fontWeight: '800', color: TXT1, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
-  goalAmounts: { fontSize: 13, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_700Bold' },
-  goalYears: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  goalName: { fontSize: 16, fontWeight: '800', color: TXT1, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
+  goalAmounts: { fontSize: 14, fontWeight: '600', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  goalYears: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
   editBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
 
   // SIP row
   sipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: BG_SEC, marginBottom: 12 },
-  sipText: { flex: 1, fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  sipStatus: { fontSize: 13, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  sipText: { flex: 1, fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  sipStatus: { fontSize: 14, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
 
   // Projection toggle
   projToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 10, backgroundColor: TEAL_L },
   projToggleActive: { backgroundColor: TEAL },
-  projToggleText: { fontSize: 13, fontWeight: '800', color: TEAL, fontFamily: 'Manrope_700Bold' },
+  projToggleText: { fontSize: 14, fontWeight: '800', color: TEAL, fontFamily: 'Manrope_700Bold' },
 
   // Info box
   infoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 16, padding: 12, backgroundColor: BLUE_L },
-  infoText: { flex: 1, fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 19, fontFamily: 'Manrope_400Regular' },
+  infoText: { flex: 1, fontSize: 14, fontWeight: '600', color: BLUE, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
 
   // Scenario card
   scenarioCard: { borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
   scenarioHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
-  scenarioTitle: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  scenarioRisk: { fontSize: 11, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
-  scenarioNeedLabel: { fontSize: 11, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  scenarioNeedVal: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioTitle: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioRisk: { fontSize: 12, fontWeight: '500', color: TXT3, fontFamily: 'Manrope_400Regular' },
+  scenarioNeedLabel: { fontSize: 12, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioNeedVal: { fontSize: 16, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioBody: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: BG_SEC },
-  scenarioBodyLabel: { fontSize: 11, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  scenarioBodyVal: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioBodyLabel: { fontSize: 12, fontWeight: '700', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  scenarioBodyVal: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioResultBadge: { borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
-  scenarioResultText: { fontSize: 11, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  scenarioResultText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   scenarioAssets: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: BG_SEC },
-  scenarioAssetsText: { fontSize: 10, fontWeight: '600', color: TXT2, lineHeight: 16, fontFamily: 'Manrope_400Regular' },
+  scenarioAssetsText: { fontSize: 12, fontWeight: '600', color: TXT2, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
 
   // SEBI
   sebiBox: { borderRadius: 16, padding: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
-  sebiText: { fontSize: 10, fontWeight: '600', color: '#92400E', lineHeight: 16, fontFamily: 'Manrope_400Regular' },
+  sebiText: { fontSize: 12, fontWeight: '600', color: '#92400E', lineHeight: 18, fontFamily: 'Manrope_400Regular' },
 
   // Empty
   emptyCard: { backgroundColor: '#fff', borderRadius: 20, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: TXT1, marginTop: 12, fontFamily: 'Manrope_700Bold' },
-  emptySub: { fontSize: 14, fontWeight: '500', color: TXT3, textAlign: 'center', marginTop: 4, marginBottom: 20, lineHeight: 21, fontFamily: 'Manrope_400Regular' },
+  emptySub: { fontSize: 15, fontWeight: '500', color: TXT3, textAlign: 'center', marginTop: 4, marginBottom: 20, lineHeight: 22, fontFamily: 'Manrope_400Regular' },
   primaryBtn: { backgroundColor: BLUE, borderRadius: 16, paddingHorizontal: 20, paddingVertical: 14, shadowColor: BLUE, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 24, elevation: 6 },
-  primaryBtnText: { fontSize: 13, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  primaryBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Sheet
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.65)', justifyContent: 'flex-end' },
@@ -670,7 +671,7 @@ const styles = StyleSheet.create({
 
   // Form
   formInput: { flex: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: BG_SEC, fontSize: 16, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  formLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
+  formLabel: { fontSize: 13, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
   currencyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: BG_SEC, marginBottom: 20 },
   currencyPrefix: { fontSize: 18, fontWeight: '700', color: TXT3 },
   currencyInput: { flex: 1, fontSize: 24, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
@@ -679,9 +680,9 @@ const styles = StyleSheet.create({
   yearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center' },
   yearBtnText: { fontSize: 18, fontWeight: '700', color: TXT1 },
   yearPreset: { flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
-  yearPresetText: { fontSize: 12, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  yearPresetText: { fontSize: 13, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
   priorityChip: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5 },
-  priorityChipText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  priorityChipText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   deleteBtn: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: RED },
   saveBtn: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
   saveBtnText: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
@@ -691,8 +692,8 @@ const styles = StyleSheet.create({
   presetTile: { width: '47%' as any, borderRadius: 16, padding: 14, backgroundColor: BG_SEC, alignItems: 'center', justifyContent: 'center', minHeight: 100, position: 'relative' },
   presetTileExists: { backgroundColor: '#F0FDF4', opacity: 0.75 },
   presetTileCustom: { width: '47%' as any, borderRadius: 16, padding: 14, alignItems: 'center', justifyContent: 'center', minHeight: 100, borderWidth: 1.5, borderColor: BLUE + '30', borderStyle: 'dashed' },
-  presetName: { fontSize: 14, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', marginTop: 8, textAlign: 'center' },
-  presetMeta: { fontSize: 12, fontWeight: '600', color: TXT3, marginTop: 3, fontFamily: 'Manrope_400Regular', textAlign: 'center' },
+  presetName: { fontSize: 15, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', marginTop: 8, textAlign: 'center' },
+  presetMeta: { fontSize: 13, fontWeight: '600', color: TXT3, marginTop: 3, fontFamily: 'Manrope_400Regular', textAlign: 'center' },
   presetExistsBadge: { position: 'absolute', top: 8, right: 8, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: GREEN_L },
-  presetExistsText: { fontSize: 9, fontWeight: '800', color: GREEN_H, fontFamily: 'Manrope_700Bold' },
+  presetExistsText: { fontSize: 11, fontWeight: '800', color: GREEN_H, fontFamily: 'Manrope_700Bold' },
 })

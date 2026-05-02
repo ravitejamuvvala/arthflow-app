@@ -1,7 +1,7 @@
 // ─── Unified Decision Engine ────────────────────────────────────────────
 // Single entry point: takes all user data, returns actionable output
 
-import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots } from './calculations'
+import { calculateMonthlyRequired, fmtInr, getBudgetRule, getMoneyFlow, getMonthlySnapshots } from './calculations'
 import { generateInsights } from './insights'
 
 // ─── Unified Score (0-100) ──────────────────────────────────────────────
@@ -251,11 +251,13 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
 // ─── Top Action Determiner ──────────────────────────────────────────────
 // Returns the single most important action the user should take right now
 
-export function getTopAction(engineResult) {
+export function getTopAction(engineResult, age = 25) {
   const { flow, emergencyMonths, goalCalcs } = engineResult
   const savingsPct = flow?.savingsPct ?? 0
   const monthlyExpenses = flow?.totalSpent ?? 0
   const income = flow?.income ?? 0
+  const budget = getBudgetRule(age)
+  const savingsTarget = budget.savingsTarget
 
   // Priority 1: Emergency fund < 3 months
   if (emergencyMonths < 3 && monthlyExpenses > 0) {
@@ -281,18 +283,18 @@ export function getTopAction(engineResult) {
     }
   }
 
-  // Priority 2: Savings < 20%
-  if (savingsPct < 20 && income > 0) {
-    const gap = Math.round(income * 0.20 - flow.savings)
+  // Priority 2: Savings < target
+  if (savingsPct < savingsTarget && income > 0) {
+    const gap = Math.round(income * savingsTarget / 100 - flow.savings)
     const yearlyExtra = gap * 12
     return {
       key: 'savings',
       severity: savingsPct < 10 ? 'urgent' : 'warning',
       title: 'Boost Your Savings',
-      subtitle: `Currently saving ${savingsPct}% — target is 20%`,
+      subtitle: `Currently saving ${savingsPct}% — target is ${savingsTarget}%`,
       impact: `Finding ${fmtInr(gap)} more per month changes everything`,
       outcome: `That's ${fmtInr(yearlyExtra)} more saved per year`,
-      confidence: 'Based on your 50-30-20 budget split',
+      confidence: `Based on your ${budget.label} budget split`,
       ctaLabel: `Save ${fmtInr(gap)} more`,
       ctaAmount: gap,
     }
@@ -341,17 +343,20 @@ export function getTopAction(engineResult) {
 // ─── Money Story (3-line narrative) ─────────────────────────────────────
 // Returns { positive, problem, action } — each a human-readable line with ₹ amounts
 
-export function getMoneyStory(engineResult) {
+export function getMoneyStory(engineResult, age = 25) {
   const { flow, emergencyMonths, goalCalcs, allInsights } = engineResult
   const income = flow?.income ?? 0
   const savings = flow?.savings ?? 0
   const savingsPct = flow?.savingsPct ?? 0
   const totalSpent = flow?.totalSpent ?? 0
   const lifestyle = flow?.catTotals?.lifestyle ?? 0
+  const budget = getBudgetRule(age)
+  const savingsTarget = budget.savingsTarget
+  const wantsTarget = budget.wantsTarget
 
   // ── Line 1: Positive insight ──────────────────────────────
   let positive
-  if (savingsPct >= 20) {
+  if (savingsPct >= savingsTarget) {
     positive = `You saved ${savingsPct}% this month — that's ${fmtInr(savings)} kept`
   } else if (savings > 0) {
     positive = `You saved ${fmtInr(savings)} this month`
@@ -369,17 +374,17 @@ export function getMoneyStory(engineResult) {
     problem = `But only ${emergencyMonths} months of emergency cover — need 6`
   } else if (savingsPct < 10 && income > 0) {
     problem = `But only ${savingsPct}% saved — ${fmtInr(totalSpent)} is going out`
-  } else if (savingsPct < 20 && income > 0) {
-    const gap = Math.round(income * 0.20 - savings)
-    problem = `But ${fmtInr(gap)} short of the 20% savings target`
-  } else if (lifestyle > income * 0.30 && income > 0) {
-    problem = `But ${fmtInr(lifestyle)} on lifestyle — that's above the 30% limit`
+  } else if (savingsPct < savingsTarget && income > 0) {
+    const gap = Math.round(income * savingsTarget / 100 - savings)
+    problem = `But ${fmtInr(gap)} short of the ${savingsTarget}% savings target`
+  } else if (lifestyle > income * wantsTarget / 100 && income > 0) {
+    problem = `But ${fmtInr(lifestyle)} on lifestyle — that's above the ${wantsTarget}% limit`
   } else {
     // Check if any goals are off track
     const offTrack = (goalCalcs || []).filter(g => g.funded < 0.5)
     if (offTrack.length > 0) {
       problem = `But ${offTrack.length} goal${offTrack.length > 1 ? 's' : ''} still under 50% funded`
-    } else if (savings > 0 && savingsPct >= 20) {
+    } else if (savings > 0 && savingsPct >= savingsTarget) {
       problem = `But ${fmtInr(savings)} is sitting idle — losing value to inflation`
     } else {
       problem = null
@@ -391,11 +396,11 @@ export function getMoneyStory(engineResult) {
   if (emergencyMonths < 3 && totalSpent > 0) {
     const monthlyTarget = Math.ceil(totalSpent * 0.25)
     action = `Start saving ${fmtInr(monthlyTarget)}/month for emergencies`
-  } else if (savingsPct < 20 && income > 0) {
-    const gap = Math.round(income * 0.20 - savings)
-    action = `Cut ${fmtInr(gap)} from spending to hit 20% savings`
-  } else if (lifestyle > income * 0.30 && income > 0) {
-    const cut = Math.round(lifestyle - income * 0.30)
+  } else if (savingsPct < savingsTarget && income > 0) {
+    const gap = Math.round(income * savingsTarget / 100 - savings)
+    action = `Cut ${fmtInr(gap)} from spending to hit ${savingsTarget}% savings`
+  } else if (lifestyle > income * wantsTarget / 100 && income > 0) {
+    const cut = Math.round(lifestyle - income * wantsTarget / 100)
     action = `Trim ${fmtInr(cut)} from lifestyle this month`
   } else if (savings > 0) {
     action = `Start investing ${fmtInr(savings)}/month in SIPs`

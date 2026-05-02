@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
@@ -20,10 +19,12 @@ export default function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [showSignUp, setShowSignUp] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   const handleSignIn = async () => {
+    setErrorMsg('')
     if (!email.includes('@') || password.length < 6) {
-      Alert.alert('Invalid input', 'Enter a valid email and password (min 6 chars).')
+      setErrorMsg('Enter a valid email and password (min 6 chars).')
       return
     }
     setLoading(true)
@@ -32,14 +33,14 @@ export default function LoginScreen({ onLogin }) {
       console.log('SignIn response:', { data, error })
       if (error) {
         setLoading(false)
-        Alert.alert('Sign in error', error.message)
+        setErrorMsg('Invalid credentials.')
         return
       }
       // Let auth state change in App.js handle session update
       setLoading(false)
     } catch (e) {
       setLoading(false)
-      Alert.alert('Sign in error', e.message || String(e))
+      setErrorMsg('Something went wrong. Please try again.')
     }
   }
 
@@ -82,6 +83,17 @@ export default function LoginScreen({ onLogin }) {
             autoCapitalize="none"
             autoComplete="password"
           />
+          {errorMsg !== '' && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+              {errorMsg === 'Invalid credentials.' && (
+                <Text style={styles.errorText}>
+                  Don't have an account?{' '}
+                  <Text style={styles.errorLink} onPress={() => { setErrorMsg(''); setShowSignUp(true) }}>Sign Up</Text>
+                </Text>
+              )}
+            </View>
+          )}
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
             onPress={handleSignIn}
@@ -94,7 +106,7 @@ export default function LoginScreen({ onLogin }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.btn, { backgroundColor: '#64748B', marginTop: 8 }]}
-            onPress={() => setShowSignUp(true)}
+            onPress={() => { setErrorMsg(''); setShowSignUp(true) }}
             disabled={loading}
           >
             <Text style={styles.btnText}>Sign Up</Text>
@@ -203,5 +215,26 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     marginTop: 8,
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#991B1B',
+    fontFamily: 'Manrope_400Regular',
+    lineHeight: 20,
+  },
+  errorLink: {
+    color: '#1E3A8A',
+    fontWeight: '800',
+    fontFamily: 'Manrope_700Bold',
+    textDecorationLine: 'underline',
   },
 })

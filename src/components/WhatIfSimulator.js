@@ -13,6 +13,16 @@ const ORANGE = '#F59E0B'
 const ORANGE_L = '#FEF3C7'
 const TXT1   = '#111827'
 const TXT2   = '#6B7280'
+
+/** Format months as "X yrs Y mo" or just "Y mo" */
+function fmtTime(months) {
+  const abs = Math.abs(months)
+  const y = Math.floor(abs / 12)
+  const m = abs % 12
+  if (y > 0 && m > 0) return `${y}y ${m}mo`
+  if (y > 0) return `${y}y`
+  return `${m}mo`
+}
 const TXT3   = '#9CA3AF'
 const BORDER = '#E5E7EB'
 
@@ -106,13 +116,13 @@ export default function WhatIfSimulator({ goals, currentSavings, income }) {
               <View style={{ flex: 1 }}>
                 <Text style={s.goalName} numberOfLines={1}>{g.name}</Text>
                 <Text style={s.goalDetail}>
-                  {g.originalMonths} mo → <Text style={{ fontWeight: '800', color: deltaColor }}>{g.newMonths} mo</Text>
+                  {fmtTime(g.originalMonths)} → <Text style={{ fontWeight: '800', color: deltaColor }}>{fmtTime(g.newMonths)}</Text>
                 </Text>
               </View>
               {g.delta !== 0 && (
                 <View style={[s.goalDelta, { backgroundColor: g.delta > 0 ? GREEN_L : RED_L }]}>
                   <Text style={[s.goalDeltaTxt, { color: g.delta > 0 ? GREEN : RED }]}>
-                    {g.delta > 0 ? `${g.delta} mo faster` : `${Math.abs(g.delta)} mo slower`}
+                    {g.delta > 0 ? `${fmtTime(g.delta)} faster` : `${fmtTime(g.delta)} slower`}
                   </Text>
                 </View>
               )}

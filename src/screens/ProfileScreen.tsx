@@ -19,6 +19,7 @@ import {
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
+import { commaFormat, stripCommas } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -257,7 +258,7 @@ export default function ProfileScreen() {
           <ArthFlowLogo size={28} />
           <Text style={st.brandText}>ARTHFLOW</Text>
         </View>
-        <TouchableOpacity style={st.editBtn} activeOpacity={0.7} onPress={() => { setEditName(userName); setEditLastName(''); setEditDob(profile?.dob || ''); setEditPhone(profile?.phone || ''); setEditEmail(userEmail); setEditIncome(String(monthlyIncome || '')); setEditType(profile?.income_type || 'salary'); setShowEdit(true) }}>
+        <TouchableOpacity style={st.editBtn} activeOpacity={0.7} onPress={() => { setEditName(userName); setEditLastName(''); setEditDob(profile?.dob || ''); setEditPhone(profile?.phone || ''); setEditEmail(userEmail); setEditIncome(monthlyIncome ? commaFormat(String(monthlyIncome)) : ''); setEditType(profile?.income_type || 'salary'); setShowEdit(true) }}>
           <Text style={st.editBtnText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
@@ -340,7 +341,7 @@ export default function ProfileScreen() {
                 return (
                   <View key={seg.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: seg.color }} />
-                    <Text style={{ fontSize: 11, color: TXT2, fontFamily: 'Manrope_400Regular' }}>{seg.label} {pct}%</Text>
+                    <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>{seg.label} {pct}%</Text>
                   </View>
                 )
               })}
@@ -356,7 +357,7 @@ export default function ProfileScreen() {
             return (
               <TouchableOpacity
                 key={cfg.key}
-                onPress={() => { setActiveAssetSheet(cfg.key); setAssetInputValue(val > 0 ? String(val) : '') }}
+                onPress={() => { setActiveAssetSheet(cfg.key); setAssetInputValue(val > 0 ? commaFormat(String(val)) : '') }}
                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: val > 0 ? cfg.bg : BG_SEC }}
                 activeOpacity={0.7}
               >
@@ -365,13 +366,13 @@ export default function ProfileScreen() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{cfg.label}</Text>
-                  <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{cfg.subLabel}</Text>
+                  <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{cfg.subLabel}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: val > 0 ? cfg.color : TXT3, fontFamily: 'Manrope_700Bold' }}>
                     {showNetWorth ? (val > 0 ? fmtInr(val) : '₹0') : '••••'}
                   </Text>
-                  {val > 0 && nw > 0 && <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{pct}%</Text>}
+                  {val > 0 && nw > 0 && <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{pct}%</Text>}
                 </View>
               </TouchableOpacity>
             )
@@ -423,7 +424,7 @@ export default function ProfileScreen() {
       <View style={st.settingsGroup}>
         <Text style={st.settingsGroupTitle}>ACCOUNT</Text>
         <View style={st.settingsCard}>
-          <TouchableOpacity onPress={() => { setEditName(userName); setEditLastName(''); setEditDob(profile?.dob || ''); setEditPhone(profile?.phone || ''); setEditEmail(userEmail); setEditIncome(String(monthlyIncome || '')); setEditType(profile?.income_type || 'salary'); setShowEdit(true) }}>
+          <TouchableOpacity onPress={() => { setEditName(userName); setEditLastName(''); setEditDob(profile?.dob || ''); setEditPhone(profile?.phone || ''); setEditEmail(userEmail); setEditIncome(monthlyIncome ? commaFormat(String(monthlyIncome)) : ''); setEditType(profile?.income_type || 'salary'); setShowEdit(true) }}>
             <SettingsRow icon="👤" label="Edit Profile" desc={`${userName} · ${userEmail}`} />
           </TouchableOpacity>
           <View style={st.settingsDivider} />
@@ -496,25 +497,25 @@ export default function ProfileScreen() {
                 </View>
                 <Text style={{ fontSize: 14, color: TXT2, lineHeight: 22, marginBottom: 16, marginTop: 8, paddingLeft: 4, fontFamily: 'Manrope_400Regular' }}>{activeCfg.description}</Text>
                 <View style={{ borderRadius: 20, padding: 20, alignItems: 'center', backgroundColor: '#0B1B4A', marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, fontFamily: 'Manrope_700Bold' }}>Current value of {activeCfg.label}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, fontFamily: 'Manrope_700Bold' }}>Current value of {activeCfg.label}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={{ fontSize: 32, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginRight: 4, fontFamily: 'Manrope_700Bold' }}>₹</Text>
                     <TextInput
                       value={assetInputValue}
-                      onChangeText={setAssetInputValue}
+                      onChangeText={t => setAssetInputValue(commaFormat(t))}
                       placeholder="0"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       keyboardType="number-pad"
                       returnKeyType="done"
                       autoFocus
                       selectTextOnFocus
-                      onSubmitEditing={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(assetInputValue) || 0); setActiveAssetSheet(null) } }}
-                      style={{ fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120, fontFamily: 'Manrope_700Bold' }}}
+                      onSubmitEditing={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(stripCommas(assetInputValue)) || 0); setActiveAssetSheet(null) } }}
+                      style={{ fontSize: 40, fontWeight: '800', color: '#E0A820', letterSpacing: -1.5, textAlign: 'center', minWidth: 120, fontFamily: 'Manrope_700Bold' }}
                     />
                   </View>
                 </View>
                 <TouchableOpacity
-                  onPress={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(assetInputValue) || 0); setActiveAssetSheet(null) } }}
+                  onPress={() => { if (activeAssetSheet) { saveAsset(activeAssetSheet, Number(stripCommas(assetInputValue)) || 0); setActiveAssetSheet(null) } }}
                   style={{ borderRadius: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE }}
                 >
                   <Text style={{ fontSize: 14, color: '#fff' }}>✓</Text>
@@ -536,7 +537,7 @@ export default function ProfileScreen() {
             <View style={st.modalHeader}>
               <View>
                 <Text style={st.modalTitle}>Edit Profile</Text>
-                <Text style={{ fontSize: 11, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' }}>All fields are optional except name</Text>
+                <Text style={{ fontSize: 12, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' }}>All fields are optional except name</Text>
               </View>
               <TouchableOpacity onPress={() => setShowEdit(false)} style={st.modalCloseBtn}>
                 <Text style={st.modalCloseText}>✕</Text>
@@ -587,7 +588,7 @@ export default function ProfileScreen() {
               <Text style={st.editFieldLabel}>MONTHLY TAKE-HOME INCOME</Text>
               <View style={st.editIncomeRow}>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
-                <TextInput style={st.editIncomeInput} value={editIncome} onChangeText={setEditIncome} placeholder="0" placeholderTextColor={TXT3} keyboardType="number-pad" returnKeyType="done" />
+                <TextInput style={st.editIncomeInput} value={editIncome} onChangeText={t => setEditIncome(commaFormat(t))} placeholder="0" placeholderTextColor={TXT3} keyboardType="number-pad" returnKeyType="done" />
               </View>
             </ScrollView>
 
@@ -597,7 +598,7 @@ export default function ProfileScreen() {
                 const updates: any = {}
                 const fullName = [editName.trim(), editLastName.trim()].filter(Boolean).join(' ')
                 if (fullName) updates.full_name = fullName
-                if (editIncome) updates.monthly_income = Number(editIncome)
+                if (editIncome) updates.monthly_income = Number(stripCommas(editIncome))
                 if (editType) updates.income_type = editType
                 if (editDob) {
                   updates.dob = editDob
@@ -686,7 +687,7 @@ export default function ProfileScreen() {
                   <Text style={{ fontSize: 12, color: TXT2, lineHeight: 20, fontFamily: 'Manrope_400Regular' }}>{s.text}</Text>
                 </View>
               ))}
-              <Text style={{ fontSize: 11, color: TXT3, marginTop: 4, fontFamily: 'Manrope_400Regular' }}>Last updated: April 2026</Text>
+              <Text style={{ fontSize: 12, color: TXT3, marginTop: 4, fontFamily: 'Manrope_400Regular' }}>Last updated: April 2026</Text>
             </ScrollView>
           </View>
         </View>
@@ -791,11 +792,11 @@ const st = StyleSheet.create({
   heroUserSub: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginTop: 2, fontFamily: 'Manrope_400Regular' },
   heroMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   heroMemberDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GREEN },
-  heroMemberText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_400Regular' },
+  heroMemberText: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Manrope_400Regular' },
   heroStatsGrid: { flexDirection: 'row', gap: 8 },
   heroStatBox: { flex: 1, borderRadius: 14, padding: 8, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
-  heroStatValue: { fontSize: 13, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
-  heroStatLabel: { fontSize: 9, fontWeight: '600', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.3, fontFamily: 'Manrope_400Regular' },
+  heroStatValue: { fontSize: 14, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroStatLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.3, fontFamily: 'Manrope_400Regular' },
 
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
   cardTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
@@ -803,18 +804,18 @@ const st = StyleSheet.create({
   assetChip: { width: (SCREEN_W - 40 - 10 - 32) / 2, borderRadius: 16, padding: 12, backgroundColor: '#fff', borderWidth: 1 },
 
   settingsGroup: { marginBottom: 16 },
-  settingsGroupTitle: { fontSize: 12, fontWeight: '700', color: TXT3, letterSpacing: 1, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
+  settingsGroupTitle: { fontSize: 13, fontWeight: '700', color: TXT3, letterSpacing: 1, marginBottom: 8, fontFamily: 'Manrope_700Bold' },
   settingsCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: BORDER },
   settingsItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 16 },
   settingsIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   settingsLabel: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  settingsDesc: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  settingsDesc: { fontSize: 14, fontWeight: '500', color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
   settingsDivider: { height: 1, backgroundColor: BG_SEC, marginHorizontal: 20 },
   chevron: { fontSize: 22, color: TXT3, fontWeight: '300' },
 
   footer: { alignItems: 'center', paddingVertical: 20 },
-  footerVersion: { fontSize: 13, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_700Bold' },
-  footerMade: { fontSize: 12, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
+  footerVersion: { fontSize: 14, fontWeight: '600', color: TXT3, fontFamily: 'Manrope_700Bold' },
+  footerMade: { fontSize: 13, fontWeight: '500', color: TXT3, marginTop: 2, fontFamily: 'Manrope_400Regular' },
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.6)' },
   modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
@@ -825,13 +826,13 @@ const st = StyleSheet.create({
   sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BG_SEC, alignSelf: 'center', marginBottom: 16 },
 
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BLUE_L, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  editBtnText: { fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
-  editSectionTitle: { fontSize: 13, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
-  editFieldLabel: { fontSize: 12, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
+  editBtnText: { fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  editSectionTitle: { fontSize: 14, fontWeight: '800', color: TXT1, marginBottom: 10, marginTop: 16, fontFamily: 'Manrope_700Bold' },
+  editFieldLabel: { fontSize: 13, fontWeight: '700', color: TXT3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontFamily: 'Manrope_700Bold' },
   editInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, fontWeight: '600', color: TXT1, backgroundColor: BG_SEC, marginBottom: 12, fontFamily: 'Manrope_400Regular' },
   editTypeBtn: { width: '30%', flexGrow: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent', gap: 2 },
   editTypeBtnActive: { backgroundColor: BLUE_L, borderColor: BLUE + '40' },
-  editTypeBtnText: { fontSize: 11, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
+  editTypeBtnText: { fontSize: 12, fontWeight: '800', color: TXT3, marginTop: 2, textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
   editIncomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: BG_SEC, marginBottom: 12 },
   editIncomeInput: { flex: 1, fontSize: 22, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   editSaveBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 16, backgroundColor: BLUE },

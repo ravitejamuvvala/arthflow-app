@@ -14,13 +14,12 @@ import {
     View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
-import MoneyStoryCard from '../components/MoneyStoryCard'
 import TopActionCard from '../components/TopActionCard'
 import { fetchAiReport } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { Goal, Profile, Transaction } from '../types'
 import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
-import { getMoneyStory, getTopAction, runEngine } from '../utils/engine'
+import { getTopAction, runEngine } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -372,10 +371,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
       </View>
 
       {/* ── Top Action Card ──────────────────────────────── */}
-      <TopActionCard topAction={getTopAction(engineResult)} onPress={onNavigateCoach} />
-
-      {/* ── Money Story Card ────────────────────────────── */}
-      <MoneyStoryCard story={getMoneyStory(engineResult)} onPress={onNavigatePlan} />
+      <TopActionCard topAction={getTopAction(engineResult, userAge)} onPress={onNavigateCoach} />
 
       {/* ── Monthly Trend ────────────────────────────────── */}
       {snapshots.length > 1 && (
@@ -463,9 +459,9 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               activeOpacity={0.7}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 }}
             >
-              <Text style={{ fontSize: 12 }}>💡</Text>
-              <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: '#92400E', flex: 1 }}>Your data has changed — tap to refresh report</Text>
-              <Text style={{ fontSize: 11, color: '#92400E' }}>🔄</Text>
+              <Text style={{ fontSize: 13 }}>💡</Text>
+              <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: '#92400E', flex: 1 }}>Your data has changed — tap to refresh report</Text>
+              <Text style={{ fontSize: 12, color: '#92400E' }}>🔄</Text>
             </TouchableOpacity>
           )}
 
@@ -478,7 +474,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
                 {aiReport.sections?.map((sec: any, i: number) => (
                   <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BG_SEC, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
                     <Text style={{ fontSize: 13 }}>{sec.icon}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{sec.title}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{sec.title}</Text>
                   </View>
                 ))}
               </View>
@@ -521,7 +517,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
         </View>
         {flow.isEstimated && (
-          <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 11, color: TXT3, marginBottom: 10 }}>Based on your onboarding budget — add expenses for actuals</Text>
+          <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginBottom: 10 }}>Based on your onboarding budget — add expenses for actuals</Text>
         )}
         {[
           { label: 'Bills & Needs', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
@@ -541,7 +537,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
                   <Text style={{ fontSize: 13 }}>{row.emoji}</Text>
                   <View>
                     <Text style={s.bpLabel}>{row.label}</Text>
-                    <Text style={{ fontSize: 10, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{row.sub}</Text>
+                    <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{row.sub}</Text>
                   </View>
                 </View>
                 <View style={[s.bpPill, { backgroundColor: barColor + '18' }]}>
@@ -551,7 +547,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan, refre
               {/* Amount row: actual vs budget */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 15, color: TXT1 }}>{fmtInr(row.amount)}</Text>
-                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: row.good ? GREEN_H : RED }}>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: row.good ? GREEN_H : RED }}>
                   {isWealth ? (row.good ? '✓ ' : '') : ''}{overUnder} · limit {fmtInr(budgetAmount)}
                 </Text>
               </View>
@@ -748,18 +744,18 @@ const s = StyleSheet.create({
 
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12 },
   statusText: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
-  statusMessage: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontFamily: 'Manrope_400Regular' },
+  statusMessage: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontFamily: 'Manrope_400Regular' },
 
   flowRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
   flowBox: { flex: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.1)' },
-  flowLabel: { fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
-  flowValue: { fontSize: 16, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
+  flowLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
+  flowValue: { fontSize: 17, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Problem card
   problemCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
   problemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   problemTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
-  problemMessage: { fontSize: 14, color: TXT2, lineHeight: 21, fontFamily: 'Manrope_400Regular', marginBottom: 14 },
+  problemMessage: { fontSize: 15, color: TXT2, lineHeight: 22, fontFamily: 'Manrope_400Regular', marginBottom: 14 },
   ctaBtn: { backgroundColor: BLUE, borderRadius: 14, paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   ctaBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
   ctaArrow: { fontSize: 16, color: '#fff', fontWeight: '800' },
@@ -768,12 +764,12 @@ const s = StyleSheet.create({
   reportCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '25', borderLeftWidth: 4, borderLeftColor: BLUE },
   reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   reportScoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  reportScoreText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  reportSummary: { fontSize: 14, color: TXT1, lineHeight: 21, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
+  reportScoreText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  reportSummary: { fontSize: 15, color: TXT1, lineHeight: 22, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
 
   // Insight chips
   insightChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: BORDER, maxWidth: 260 },
-  insightChipText: { fontSize: 12, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold', lineHeight: 17, flexShrink: 1 },
+  insightChipText: { fontSize: 13, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold', lineHeight: 19, flexShrink: 1 },
 
   // Card
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
@@ -782,41 +778,41 @@ const s = StyleSheet.create({
 
   // Blueprint
   bpBadge: { backgroundColor: BLUE_L, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  bpBadgeText: { fontSize: 12, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
-  bpLabel: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  bpBadgeText: { fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
+  bpLabel: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   bpPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  bpPillText: { fontSize: 12, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  bpPillText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative', marginBottom: 2 },
   barFill: { position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3 },
   barMarker: { position: 'absolute', top: -5, alignItems: 'center' },
   barMarkerLine: { width: 2, height: 16, backgroundColor: TXT1, borderRadius: 1 },
-  barMarkerLabel: { fontSize: 9, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold', marginTop: 1 },
+  barMarkerLabel: { fontSize: 11, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold', marginTop: 1 },
 
   // Category chips
   catChip: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1 },
-  catAmount: { fontSize: 15, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
-  catLabel: { fontSize: 10, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
+  catAmount: { fontSize: 16, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
+  catLabel: { fontSize: 12, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
 
   // Transactions
   txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC },
   txLeft: { flex: 1 },
-  txNote: { fontSize: 14, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
-  txDate: { fontSize: 12, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
-  txAmount: { fontSize: 15, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
+  txNote: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  txDate: { fontSize: 13, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
+  txAmount: { fontSize: 16, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
 
   // Trend
   trendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
   trendRowCurrent: { backgroundColor: BLUE_L, borderRadius: 12, paddingHorizontal: 8, marginHorizontal: -4 },
   trendMonthCol: { width: 32 },
-  trendMonth: { fontSize: 12, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
+  trendMonth: { fontSize: 13, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold' },
   trendContent: { flex: 1 },
   trendBarTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, overflow: 'hidden', marginBottom: 4 },
   trendBarFill: { height: 6, borderRadius: 3 },
   trendStats: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  trendStatText: { fontSize: 12, fontFamily: 'Manrope_400Regular', color: TXT3 },
-  trendSaved: { fontSize: 11, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  trendStatText: { fontSize: 13, fontFamily: 'Manrope_400Regular', color: TXT3 },
+  trendSaved: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
   trendInsight: { marginTop: 10, backgroundColor: BG_SEC, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  trendInsightText: { fontSize: 12, fontWeight: '600', color: BLUE, lineHeight: 18, fontFamily: 'Manrope_400Regular' },
+  trendInsightText: { fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
 
   // Sheets
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.65)', justifyContent: 'flex-end' },
@@ -832,7 +828,7 @@ const s = StyleSheet.create({
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: BG_SEC, marginBottom: 8 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
   catPickChip: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: BG_SEC, borderWidth: 1.5, borderColor: 'transparent' },
-  catPickText: { fontSize: 10, fontWeight: '800', color: TXT3, textTransform: 'uppercase', marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  catPickText: { fontSize: 12, fontWeight: '800', color: TXT3, textTransform: 'uppercase', marginTop: 2, fontFamily: 'Manrope_700Bold' },
   deleteBtn: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: RED },
   saveBtn: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: BLUE },
   saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },

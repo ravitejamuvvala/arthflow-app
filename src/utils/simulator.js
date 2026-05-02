@@ -86,7 +86,13 @@ export function simulateGoals({ goals, currentMonthly, simMonthly }) {
       : `${months} month${months > 1 ? 's' : ''}`
     summary = `You'll reach your goals ${timeStr} earlier`
   } else if (avgDelta < 0) {
-    summary = `This would delay your goals by ${Math.abs(avgDelta)} months`
+    const abs = Math.abs(avgDelta)
+    const years = Math.floor(abs / 12)
+    const months = abs % 12
+    const timeStr = years > 0
+      ? `${years} year${years > 1 ? 's' : ''}${months > 0 ? ` ${months} month${months > 1 ? 's' : ''}` : ''}`
+      : `${months} month${months > 1 ? 's' : ''}`
+    summary = `This would delay your goals by ${timeStr}`
   } else {
     summary = 'Same timeline as current plan'
   }
