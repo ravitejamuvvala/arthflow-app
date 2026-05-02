@@ -1,9 +1,48 @@
 // ─── Unified Decision Engine ────────────────────────────────────────────
 // Single entry point: takes all user data, returns actionable output
 
-import { calculateMonthlyRequired, fmtInr, getMoneyFlow } from './calculations'
+import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots } from './calculations'
 import { generateInsights } from './insights'
-import { getStatus } from './status'
+
+// ─── Unified Score (0-100) ──────────────────────────────────────────────
+function calculateScore(flow, emergencyMonths, goalCalcs) {
+  if (!flow) return 50
+  let score = 25
+
+  const savingsPct = flow.savingsPct ?? 0
+  if (savingsPct >= 30) score += 25
+  else if (savingsPct >= 20) score += 20
+  else if (savingsPct >= 10) score += 10
+  else if (savingsPct > 0) score += 5
+
+  if (emergencyMonths >= 6) score += 20
+  else if (emergencyMonths >= 3) score += 10
+  else if (emergencyMonths > 0) score += 5
+
+  if (flow.needsPct <= 50) score += 10
+  if (flow.wantsPct <= 30) score += 5
+
+  const avgFunded = goalCalcs?.length > 0
+    ? goalCalcs.reduce((s, g) => s + g.funded, 0) / goalCalcs.length
+    : 0
+  if (avgFunded >= 0.5) score += 10
+  else if (avgFunded > 0) score += 5
+
+  return Math.min(100, score)
+}
+
+function getScoreLabel(score) {
+  if (score >= 80) return 'Excellent'
+  if (score >= 60) return 'Good'
+  if (score >= 40) return 'Fair'
+  return 'Needs Work'
+}
+
+function getStatusFromScore(score) {
+  if (score >= 70) return { status: 'on track', emoji: '🟢', color: '#22C55E' }
+  if (score >= 45) return { status: 'slightly off track', emoji: '🟡', color: '#F59E0B' }
+  return { status: 'needs attention', emoji: '🔴', color: '#EF4444' }
+}
 
 export function runEngine({ income, transactions, goals, assets, age, profile }) {
   const flow = getMoneyFlow(transactions, income, profile)
@@ -18,14 +57,10 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const goalCalcs = configuredGoals.map(g => calculateMonthlyRequired(g))
   const avgGoalFunded = goalCalcs.length > 0 ? goalCalcs.reduce((s, c) => s + c.funded, 0) / goalCalcs.length : 0
 
-  // Status
-  const statusResult = getStatus({
-    savingsPct: flow.savingsPct,
-    needsPct: flow.needsPct,
-    wantsPct: flow.wantsPct,
-    emergencyMonths,
-    goalsFunded: avgGoalFunded,
-  })
+  // Unified score (0-100) — single source of truth
+  const score = calculateScore(flow, emergencyMonths, goalCalcs)
+  const scoreLabel = getScoreLabel(score)
+  const statusFromScore = getStatusFromScore(score)
 
   // Insights (top 2 only)
   const allInsights = generateInsights({ transactions, goals, profile, assets })
@@ -35,15 +70,106 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   const topProblem = topInsights[0]?.type !== 'positive' ? topInsights[0]?.title : null
   const action = topInsights[0]?.action || null
 
+  // ─── Investment allocation (age-based) ────────────────────
+  const equityPct = Math.min(80, 100 - (age || 25))
+  const debtPct = 100 - equityPct
+  const suggestedSip = flow.savings > 0 ? Math.round(flow.savings * 0.6) : 0
+  const investment = {
+    equityPct,
+    debtPct,
+    suggestedSip,
+    allocation: {
+      largeCap: Math.round(suggestedSip * 0.60),
+      midSmallCap: Math.round(suggestedSip * 0.25),
+      international: Math.round(suggestedSip * 0.15),
+    },
+  }
+
+  // ─── Asset diversification analysis ───────────────────────
+  const assetValues = {
+    liquidCash: Number(assets?.liquidCash) || 0,
+    mutualFunds: Number(assets?.mutualFunds) || 0,
+    stocks: Number(assets?.stocks) || 0,
+    epf: Number(assets?.epf) || 0,
+    ppf: Number(assets?.ppf) || 0,
+    gold: Number(assets?.gold) || 0,
+    realEstate: Number(assets?.realEstate) || 0,
+    other: Number(assets?.other) || 0,
+  }
+  const netWorth = Object.values(assetValues).reduce((s, v) => s + v, 0)
+  const assetPcts = {}
+  let dominantAsset = { name: 'none', pct: 0 }
+  for (const [key, val] of Object.entries(assetValues)) {
+    const pct = netWorth > 0 ? Math.round((val / netWorth) * 100) : 0
+    assetPcts[key] = pct
+    if (pct > dominantAsset.pct) dominantAsset = { name: key, pct }
+  }
+  const nonZeroAssets = Object.values(assetValues).filter(v => v > 0).length
+  const assetAnalysis = {
+    netWorth,
+    breakdown: assetPcts,
+    dominantAsset,
+    diversified: nonZeroAssets >= 3 && dominantAsset.pct <= 40,
+    concentrationRisk: dominantAsset.pct > 40,
+    assetCount: nonZeroAssets,
+  }
+
+  // ─── Risk assessment ──────────────────────────────────────
+  const annualIncome = (flow.income || profile?.monthly_income || 0) * 12
+  const termInsuranceNeeded = annualIncome * 15
+  const healthInsuranceNeeded = age < 35 ? 1000000 : age < 50 ? 2500000 : 5000000 // ₹10L / ₹25L / ₹50L
+  const risk = {
+    emergencyMonths,
+    emergencyTarget: monthlyExpenses * 6,
+    emergencyGap: Math.max(0, monthlyExpenses * 6 - liquidCash),
+    termInsuranceNeeded,
+    healthInsuranceNeeded,
+    hasInsurance: !!assets?.hasInsurance,
+    riskLevel: emergencyMonths >= 6 && score >= 60 ? 'low' : emergencyMonths >= 3 ? 'medium' : 'high',
+  }
+
+  // ─── Trend analysis (last 3 months) ───────────────────────
+  const snapshots = getMonthlySnapshots(transactions, flow.income)
+  const recentSnapshots = snapshots.slice(-3)
+  let savingsTrend = 'stable'
+  if (recentSnapshots.length >= 2) {
+    const pcts = recentSnapshots.map(s => s.savedPct)
+    const first = pcts[0]
+    const last = pcts[pcts.length - 1]
+    if (last - first >= 5) savingsTrend = 'improving'
+    else if (first - last >= 5) savingsTrend = 'declining'
+  }
+  let spendingTrend = 'stable'
+  if (recentSnapshots.length >= 2) {
+    const spentVals = recentSnapshots.map(s => s.spent)
+    const first = spentVals[0]
+    const last = spentVals[spentVals.length - 1]
+    if (last > first * 1.10) spendingTrend = 'increasing'
+    else if (last < first * 0.90) spendingTrend = 'decreasing'
+  }
+  const trend = {
+    snapshots: recentSnapshots,
+    savingsTrend,
+    spendingTrend,
+    monthsTracked: snapshots.length,
+  }
+
   return {
     flow,
-    status: statusResult,
+    score,
+    scoreLabel,
+    status: { ...statusFromScore, message: topProblem || (score >= 70 ? 'Looking good — keep it up!' : 'A few tweaks will get you on track.') },
     topProblem,
     action,
     insights: topInsights,
     allInsights,
     emergencyMonths,
     goalCalcs,
+    avgGoalFunded,
+    investment,
+    assetAnalysis,
+    risk,
+    trend,
   }
 }
 

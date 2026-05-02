@@ -11,8 +11,9 @@ export function buildAppReport(engineResult, aiReport) {
   if (!engineResult) return null
   const { flow, emergencyMonths, goalCalcs, allInsights, status } = engineResult
 
-  const score = aiReport?.score ?? calculateLocalScore(engineResult)
-  const scoreLabel = aiReport?.scoreLabel ?? getScoreLabel(score)
+  // Use engine's unified score — AI can override if present
+  const score = aiReport?.score ?? engineResult.score ?? 50
+  const scoreLabel = aiReport?.scoreLabel ?? engineResult.scoreLabel ?? getScoreLabel(score)
   const summary = aiReport?.summary ?? buildLocalSummary(engineResult)
 
   // Top Problems (max 3)
@@ -49,33 +50,7 @@ export function buildAppReport(engineResult, aiReport) {
   }
 }
 
-function calculateLocalScore(engineResult) {
-  if (!engineResult?.flow) return 50
-  const { flow, emergencyMonths, goalCalcs } = engineResult
-  let score = 25
-
-  const savingsPct = flow.savingsPct ?? 0
-  if (savingsPct >= 30) score += 25
-  else if (savingsPct >= 20) score += 20
-  else if (savingsPct >= 10) score += 10
-  else if (savingsPct > 0) score += 5
-
-  if (emergencyMonths >= 6) score += 20
-  else if (emergencyMonths >= 3) score += 10
-  else if (emergencyMonths > 0) score += 5
-
-  if (flow.needsPct <= 50) score += 10
-  if (flow.wantsPct <= 30) score += 5
-
-  const avgFunded = goalCalcs?.length > 0
-    ? goalCalcs.reduce((s, g) => s + g.funded, 0) / goalCalcs.length
-    : 0
-  if (avgFunded >= 0.5) score += 10
-  else if (avgFunded > 0) score += 5
-
-  return Math.min(100, score)
-}
-
+// getScoreLabel — fallback if engine doesn't provide one
 function getScoreLabel(score) {
   if (score >= 80) return 'Excellent'
   if (score >= 60) return 'Good'

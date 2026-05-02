@@ -60,8 +60,9 @@ function highlightRupee(text: string, color: string = RUPEE_ACCENT, baseStyle?: 
   )
 }
 
-// ─── AI Reply (keyword-matching) ────────────────────────────────────────
-function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profile: Profile | null) {
+// ─── AI Reply (keyword-matching fallback) ───────────────────────────────
+// Reads pre-computed engineResult — no recalculation
+function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile: Profile | null) {
   const lc = msg.toLowerCase()
 
   // ── Finance-only guardrail ──
@@ -73,23 +74,30 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
     return `I'm your ArthFlow finance coach — I can only help with money and finance questions! 💰\n\nAsk me about your savings, investments, taxes, insurance, budgets, or goals.`
   }
 
-  const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const totalExp = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const saved = Math.max(0, income - totalExp)
-  const savePct = income > 0 ? Math.round((saved / income) * 100) : 0
+  // Pull everything from engineResult — zero recalculation
+  const flow = engineResult?.flow
+  const income = flow?.income ?? 0
+  const totalExp = flow?.totalSpent ?? 0
+  const saved = flow?.savings ?? 0
+  const savePct = flow?.savingsPct ?? 0
+  const lifestyle = flow?.catTotals?.lifestyle ?? 0
+  const essentials = flow?.catTotals?.essentials ?? 0
+  const emis = flow?.catTotals?.emis ?? 0
+  const lifePct = flow?.wantsPct ?? 0
+  const needsPct = flow?.needsPct ?? 0
+  const emergencyMonths = engineResult?.emergencyMonths ?? 0
+  const goalCalcs = engineResult?.goalCalcs ?? []
   const age = profile?.age ?? 0
   const name = profile?.full_name?.split(' ')[0] ?? 'there'
   const monthlyIncome = profile?.monthly_income ?? income
-  const lifestyle = txns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
-  const lifePct = income > 0 ? Math.round((lifestyle / income) * 100) : 0
+  const score = engineResult?.score ?? 50
+  const investment = engineResult?.investment
 
   // --- Spending / overspending ---
   if (lc.includes('spending') || lc.includes('spent') || lc.includes('high') || lc.includes('review expense') || lc.includes('cut') || lc.includes('reduc') || lc.includes('expense') || lc.includes('trim')) {
-    const essentials = txns.filter(t => t.category === 'essentials').reduce((s, t) => s + t.amount, 0)
-    const emis = txns.filter(t => t.category === 'emis').reduce((s, t) => s + t.amount, 0)
     const limit30 = Math.round(income * 0.30)
     const overBy = lifestyle - limit30
-    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${income > 0 ? Math.round((essentials/income)*100) : 0}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overBy > 0 ? ` — ₹${overBy.toLocaleString('en-IN')} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overBy > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overBy * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
+    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${needsPct}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overBy > 0 ? ` — ${fmtInr(overBy)} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overBy > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overBy * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
   }
 
   // --- Savings ---
@@ -106,20 +114,20 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
   if (lc.includes('emergency') || lc.includes('liquid') || lc.includes('safety net')) {
     const needed = totalExp * 6
     const monthly = Math.ceil(needed / 12)
-    return `${name}, your emergency fund target: ${fmtInr(needed)} (6 months × ${fmtInr(totalExp)} expenses).\n\nPlan:\n• Keep it in a liquid mutual fund (6–7% returns, instant withdrawal)\n• Build it in 12 months: ${fmtInr(monthly)}/month\n• Don't use FDs — liquid funds are more accessible and tax-efficient\n• This is your #1 priority before investing.`
+    return `${name}, your emergency fund target: ${fmtInr(needed)} (6 months × ${fmtInr(totalExp)} expenses).\nCurrently: ${emergencyMonths} months covered.\n\nPlan:\n• Keep it in a liquid mutual fund (6–7% returns, instant withdrawal)\n• Build it in 12 months: ${fmtInr(monthly)}/month\n• Don't use FDs — liquid funds are more accessible and tax-efficient\n• This is your #1 priority before investing.`
   }
 
   // --- Insurance / protection ---
   if (lc.includes('insurance') || lc.includes('protect') || lc.includes('health insurance') || lc.includes('term') || lc.includes('cover')) {
-    const termCover = monthlyIncome * 12 * 15
+    const termCover = engineResult?.risk?.termInsuranceNeeded ?? monthlyIncome * 12 * 15
     return `${name}, here's your insurance roadmap for age ${age}:\n\n🏥 Health Insurance:\n• Get ₹10L family floater (~₹700/mo)\n• Add super top-up for ₹50L (~₹300/mo extra)\n\n❤️ Term Life Insurance:\n• Cover: ${fmtInr(termCover)} (15× annual income)\n• Cost: ~₹700–900/month at age ${age}\n• Buy online (HDFC/ICICI/Max) — 40% cheaper\n\nTotal budget: under ${fmtInr(Math.round(monthlyIncome * 0.05))}/month (5% of income).`
   }
 
   // --- SIP / investing ---
   if (lc.includes('sip') || lc.includes('invest') || lc.includes('mutual') || lc.includes('surplus') || lc.includes('where to put')) {
-    const idealEq = Math.min(80, 100 - age)
+    const eqPct = investment?.equityPct ?? Math.min(80, 100 - age)
     const sipAmt = Math.round(saved * 0.6)
-    return `${name}, investment plan for age ${age}:\n\n📈 SIP Allocation (${fmtInr(sipAmt)}/month):\n• 60% Large-cap Index Fund (Nifty 50)\n• 25% Mid/Small-cap Fund\n• 15% International (Nasdaq/S&P 500)\n\n🎯 Equity allocation: ${idealEq}% (rule: 100 minus age)\n💰 Use ELSS for tax saving under 80C\n\nStart today — even ${fmtInr(1000)}/month compounds to ₹25L+ in 20 years.`
+    return `${name}, investment plan for age ${age}:\n\n📈 SIP Allocation (${fmtInr(sipAmt)}/month):\n• 60% Large-cap Index Fund (Nifty 50)\n• 25% Mid/Small-cap Fund\n• 15% International (Nasdaq/S&P 500)\n\n🎯 Equity allocation: ${eqPct}% (rule: 100 minus age)\n💰 Use ELSS for tax saving under 80C\n\nStart today — even ${fmtInr(1000)}/month compounds to ₹25L+ in 20 years.`
   }
 
   // --- Goals ---
@@ -127,8 +135,9 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
     if (goals.length === 0) return `${name}, you haven't set any goals yet! Head to the Plan tab to create one. I'd recommend starting with an emergency fund and a retirement goal.`
     const configuredGoals = goals.filter(g => g.target_amount > 0)
     if (configuredGoals.length === 0) return `${name}, you've picked ${goals.length} goal${goals.length > 1 ? 's' : ''} but haven't set targets yet. Head to the Plan tab to set amounts and timelines!`
-    const summaries = configuredGoals.slice(0, 3).map(g => {
-      const pct = Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
+    const summaries = configuredGoals.slice(0, 3).map((g, i) => {
+      const calc = goalCalcs[i]
+      const pct = calc ? Math.round(calc.funded * 100) : Math.min(100, Math.round(((g.saved_amount || g.current_amount || 0) / g.target_amount) * 100))
       return `• "${g.name}": ${pct}% funded (${fmtInr(g.saved_amount || g.current_amount || 0)} of ${fmtInr(g.target_amount)})`
     }).join('\n')
     return `${name}, here's your goal progress:\n\n${summaries}\n\n${configuredGoals.some(g => ((g.saved_amount || 0) / g.target_amount) < 0.25) ? 'Some goals are underfunded — consider increasing your monthly SIP or reallocating from lifestyle.' : 'Looking good! Stay consistent with monthly contributions.'}`
@@ -146,10 +155,10 @@ function generateAIReply(msg: string, txns: Transaction[], goals: Goal[], profil
 
   // --- How am I doing / overall ---
   if (lc.includes('how am i doing') || lc.includes('overall') || lc.includes('score') || lc.includes('snapshot'))
-    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your SIP allocation and insurance coverage.'}`
+    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n📈 Health Score: ${score}/100\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your SIP allocation and insurance coverage.'}`
 
-  // --- Fallback: give personalized advice based on their situation ---
-  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(Math.round(income * 0.20 - saved))} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent and review your SIP allocation.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
+  // --- Fallback ---
+  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n• Health Score: ${score}/100\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(Math.round(income * 0.20 - saved))} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent and review your SIP allocation.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -172,7 +181,8 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
   const [chatInput, setChatInput] = useState('')
   const [typing, setTyping] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [showFullAnalysis, setShowFullAnalysis] = useState(false)  const chatScroll = useRef<ScrollView>(null)
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false)
+  const chatScroll = useRef<ScrollView>(null)
   const mainScroll = useRef<ScrollView>(null)
 
   // Typing dots
@@ -246,14 +256,8 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       // If no cached report, fetch fresh (non-blocking)
       if (!reportLoaded && p) {
         try {
-          const income = baseIncome || p?.monthly_income || 0
-          const spent = t.filter((tx: Transaction) => tx.type === 'expense').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-          const lifestyle = t.filter((tx: Transaction) => tx.category === 'lifestyle').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-          const essentials = t.filter((tx: Transaction) => tx.category === 'essentials').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
-          const emis = t.filter((tx: Transaction) => tx.category === 'emis').reduce((s: number, tx: Transaction) => s + tx.amount, 0)
           const report = await fetchAiReport({
             profile: p,
-            transactions: t,
             goals: g.map((goal: Goal) => {
               const targetYear = goal.target_date ? new Date(goal.target_date).getFullYear() : new Date().getFullYear() + 5
               const yearsLeft = Math.max(1, targetYear - new Date().getFullYear())
@@ -263,15 +267,17 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
               return { ...goal, monthlyNeeded, yearsLeft, monthsLeft }
             }),
             assets: loadedAssets,
-            monthlyFlow: {
-              income,
-              spent,
-              saved: Math.max(0, income - spent),
-              savePct: income > 0 ? Math.round(((income - spent) / income) * 100) : 0,
-              lifestyle,
-              lifePct: income > 0 ? Math.round((lifestyle / income) * 100) : 0,
-              essentials,
-              emis,
+            // Pass pre-computed engine data — backend enhances, doesn't recalculate
+            engine: {
+              flow: result.flow,
+              score: result.score,
+              scoreLabel: result.scoreLabel,
+              emergencyMonths: result.emergencyMonths,
+              investment: result.investment,
+              assetAnalysis: result.assetAnalysis,
+              risk: result.risk,
+              trend: result.trend,
+              avgGoalFunded: result.avgGoalFunded,
             },
           })
           setAiReport(report)
@@ -339,29 +345,21 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       console.error('Failed to fetch fresh data for AI chat:', e)
     }
 
-    // Build context from fresh data
-    const income = freshTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const spent = freshTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    const lifestyle = freshTxns.filter(t => t.category === 'lifestyle').reduce((s, t) => s + t.amount, 0)
-    const essentials = freshTxns.filter(t => t.category === 'essentials').reduce((s, t) => s + t.amount, 0)
-    const emis = freshTxns.filter(t => t.category === 'emis').reduce((s, t) => s + t.amount, 0)
-    const realIncome = income > 0 ? income : (freshProfile?.monthly_income ?? 0)
-
+    // Build context from engine — no recalculation
     const chatContext = {
       profile: freshProfile,
-      transactions: freshTxns,
+      transactions: freshTxns.slice(0, 20),
       goals: freshGoals,
       assets: freshAssets,
-      monthlyFlow: {
-        income: realIncome,
-        spent,
-        saved: Math.max(0, realIncome - spent),
-        savePct: realIncome > 0 ? Math.round(((realIncome - spent) / realIncome) * 100) : 0,
-        lifestyle,
-        lifePct: realIncome > 0 ? Math.round((lifestyle / realIncome) * 100) : 0,
-        essentials,
-        emis,
-      },
+      engine: engineResult ? {
+        flow: engineResult.flow,
+        score: engineResult.score,
+        scoreLabel: engineResult.scoreLabel,
+        emergencyMonths: engineResult.emergencyMonths,
+        investment: engineResult.investment,
+        risk: engineResult.risk,
+        trend: engineResult.trend,
+      } : undefined,
     }
 
     try {
@@ -369,7 +367,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: reply }])
     } catch (err) {
       console.error('AI chat error:', err)
-      const fallback = generateAIReply(msg, freshTxns, freshGoals, freshProfile)
+      const fallback = generateAIReply(msg, engineResult, freshGoals, freshProfile)
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: fallback }])
     } finally {
       setTyping(false)
