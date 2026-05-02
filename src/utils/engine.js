@@ -44,6 +44,147 @@ function getStatusFromScore(score) {
   return { status: 'needs attention', emoji: '🔴', color: '#EF4444' }
 }
 
+// ─── Months until target year (month-level precision) ───────────────────
+function monthsUntilYear(targetYear) {
+  const now = new Date()
+  return Math.max(1, (targetYear - now.getFullYear()) * 12 + (11 - now.getMonth()))
+}
+
+// ─── Horizon-based instrument recommendation ────────────────────────────
+// Maps goal time-horizon → appropriate instruments, expected CAGR, risk level
+function getHorizonAdvice(yearsLeft) {
+  if (yearsLeft <= 1) return {
+    bucket: 'short', bucketLabel: 'Short-term', tag: 'Capital Safety',
+    tagColor: '#22C55E', cagr: 5, cagrRange: '4–6%', risk: 'Very low risk',
+    emoji: '🔒',
+    instruments: [
+      { label: 'Liquid fund',                pct: 40, color: '#16A34A' },
+      { label: 'FD / savings account',       pct: 40, color: '#0D9488' },
+      { label: 'Ultra-short debt fund',      pct: 20, color: '#3B82F6' },
+    ],
+    rationale: 'Capital preservation is critical for goals < 1 year away',
+  }
+  if (yearsLeft <= 3) return {
+    bucket: 'short', bucketLabel: 'Short-term', tag: 'Low Risk',
+    tagColor: '#22C55E', cagr: 7, cagrRange: '6–8%', risk: 'Low risk',
+    emoji: '🛡️',
+    instruments: [
+      { label: 'Short-duration debt MF',     pct: 40, color: '#16A34A' },
+      { label: 'FD / RD',                    pct: 30, color: '#0D9488' },
+      { label: 'Conservative hybrid MF',     pct: 20, color: '#3B82F6' },
+      { label: 'Gold / sovereign gold bond', pct: 10, color: '#F59E0B' },
+    ],
+    rationale: 'Limited equity exposure for 1–3 year goals to protect capital',
+  }
+  if (yearsLeft <= 5) return {
+    bucket: 'medium', bucketLabel: 'Medium-term', tag: 'Moderate',
+    tagColor: '#14B8A6', cagr: 10, cagrRange: '8–11%', risk: 'Moderate risk',
+    emoji: '⚖️',
+    instruments: [
+      { label: 'Balanced / hybrid MF',       pct: 35, color: '#3B82F6' },
+      { label: 'Large-cap equity MF (SIP)',   pct: 30, color: '#6366F1' },
+      { label: 'Debt / corporate bond fund', pct: 25, color: '#16A34A' },
+      { label: 'Gold',                       pct: 10, color: '#F59E0B' },
+    ],
+    rationale: 'Balanced mix — equity for growth, debt for stability',
+  }
+  if (yearsLeft <= 10) return {
+    bucket: 'long', bucketLabel: 'Long-term', tag: 'Growth',
+    tagColor: '#6366F1', cagr: 12, cagrRange: '10–13%', risk: 'Moderate-high risk',
+    emoji: '📈',
+    instruments: [
+      { label: 'Large-cap equity MF (SIP)',  pct: 40, color: '#3B82F6' },
+      { label: 'Mid / small-cap MF (SIP)',   pct: 25, color: '#6366F1' },
+      { label: 'International equity MF',    pct: 15, color: '#8B5CF6' },
+      { label: 'Debt / PPF',                 pct: 10, color: '#16A34A' },
+      { label: 'Gold',                       pct: 10, color: '#F59E0B' },
+    ],
+    rationale: '5–10 year horizon allows equity compounding with diversification',
+  }
+  return {
+    bucket: 'vlong', bucketLabel: 'Long-term', tag: 'Aggressive Growth',
+    tagColor: '#7C3AED', cagr: 13, cagrRange: '12–15%', risk: 'Higher risk',
+    emoji: '🚀',
+    instruments: [
+      { label: 'Large-cap equity MF (SIP)',  pct: 35, color: '#3B82F6' },
+      { label: 'Mid / small-cap MF (SIP)',   pct: 25, color: '#6366F1' },
+      { label: 'International equity MF',    pct: 20, color: '#8B5CF6' },
+      { label: 'PPF / EPF / NPS',            pct: 10, color: '#16A34A' },
+      { label: 'Gold / commodity',           pct: 10, color: '#F59E0B' },
+    ],
+    rationale: '10+ year goals benefit from aggressive equity allocation via SIP',
+  }
+}
+
+// ─── Compute SIP using a given annual CAGR ──────────────────────────────
+function sipForGoal(remaining, months, annualCagr) {
+  if (remaining <= 0 || months <= 0) return 0
+  const r = annualCagr / 100 / 12
+  return r > 0 ? Math.ceil(remaining * r / (Math.pow(1 + r, months) - 1)) : Math.ceil(remaining / months)
+}
+
+// ─── Build complete goal horizon plan ───────────────────────────────────
+function buildGoalHorizonPlan(configuredGoals, monthlySavings) {
+  const thisYear = new Date().getFullYear()
+
+  // Per-goal projections with horizon advice
+  const goalProjections = configuredGoals.map(g => {
+    const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : thisYear + 5
+    const months = monthsUntilYear(targetYear)
+    const yearsLeft = Math.ceil(months / 12)
+    const remaining = Math.max(0, g.target_amount - g.saved_amount)
+    const advice = getHorizonAdvice(yearsLeft)
+    const monthlyNeeded = sipForGoal(remaining, months, advice.cagr)
+    return {
+      id: g.id, name: g.name, targetAmount: g.target_amount,
+      savedAmount: g.saved_amount, targetYear, yearsLeft, months,
+      remaining, monthlyNeeded, advice,
+    }
+  })
+
+  const totalSipNeeded = goalProjections.reduce((s, g) => s + g.monthlyNeeded, 0)
+  const gap = totalSipNeeded - (monthlySavings || 0)
+  const fundedPct = monthlySavings > 0 ? Math.min(100, Math.round((monthlySavings / totalSipNeeded) * 100)) : 0
+  const nearestGoal = goalProjections.filter(g => g.yearsLeft > 0).sort((a, b) => a.yearsLeft - b.yearsLeft)[0] || null
+
+  // Group into horizon buckets
+  const bucketDefs = [
+    { key: 'short', label: 'Short-term (1–3 yrs)', emoji: '🛡️' },
+    { key: 'medium', label: 'Medium-term (3–5 yrs)', emoji: '⚖️' },
+    { key: 'long', label: 'Long-term (5+ yrs)', emoji: '📈' },
+  ]
+  const buckets = bucketDefs.map(def => {
+    const goals = goalProjections.filter(gp => {
+      const b = gp.advice.bucket
+      if (def.key === 'short') return b === 'short'
+      if (def.key === 'medium') return b === 'medium'
+      return b === 'long' || b === 'vlong'
+    })
+    const totalSip = goals.reduce((s, g) => s + g.monthlyNeeded, 0)
+    const totalRemaining = goals.reduce((s, g) => s + g.remaining, 0)
+    return {
+      ...def,
+      goals,
+      totalSip,
+      totalRemaining,
+      advice: goals.length > 0 ? goals[0].advice : null,
+    }
+  }).filter(b => b.goals.length > 0)
+
+  return {
+    goalProjections,
+    totalSipNeeded,
+    gap,
+    fundedPct,
+    funded: gap <= 0,
+    nearestGoal,
+    buckets,
+    monthlySavings: monthlySavings || 0,
+  }
+}
+
+export { getHorizonAdvice, sipForGoal }
+
 export function runEngine({ income, transactions, goals, assets, age, profile }) {
   const flow = getMoneyFlow(transactions, income, profile)
 
@@ -226,6 +367,9 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     }
   }
 
+  // ─── Goal Horizon Plan ─────────────────────────────────────
+  const goalHorizonPlan = buildGoalHorizonPlan(configuredGoals, flow.savings)
+
   return {
     flow,
     score,
@@ -245,6 +389,7 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     debtHealth,
     runway,
     lifestyleCreep,
+    goalHorizonPlan,
   }
 }
 
