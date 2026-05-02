@@ -498,8 +498,8 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         {appReport?.action_plan && appReport.action_plan.length > 0 && (
           <View style={s.actionCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <Text style={{ fontSize: 15 }}>✅</Text>
-              <Text style={s.sectionTitle}>Action Plan</Text>
+              <Text style={{ fontSize: 15 }}>🚨</Text>
+              <Text style={s.sectionTitle}>Your Plan This Month</Text>
             </View>
             {appReport.action_plan.slice(0, 3).map((a: any, i: number) => {
               const prioColor = a.priority === 'high' ? RED : a.priority === 'medium' ? ORANGE : GREEN
@@ -511,6 +511,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                   <View style={{ flex: 1 }}>
                     <Text style={s.actionTitle}>{a.title}</Text>
                     <Text style={s.actionDesc} numberOfLines={2}>{highlightRupee(a.description, prioColor, undefined)}</Text>
+                    {a.outcome && (
+                      <Text style={{ fontSize: 12, color: GREEN, fontWeight: '600', marginTop: 4 }}>→ {a.outcome}</Text>
+                    )}
                     <View style={[s.amountChip, { backgroundColor: prioColor + '12' }]}>
                       <Text style={[s.amountChipTxt, { color: prioColor }]}>₹{a.monthly_amount?.toLocaleString('en-IN')}/month</Text>
                     </View>
@@ -551,7 +554,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           </View>
         )}
 
-        {/* ══ VIEW FULL ANALYSIS TOGGLE ═════════════════════ */}
+        {/* ══ VIEW FULL REPORT ════════════════════════════ */}
         <TouchableOpacity
           style={s.fullAnalysisBtn}
           onPress={() => {
@@ -561,14 +564,217 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           activeOpacity={0.8}
         >
           <Text style={s.fullAnalysisTxt}>
-            {showFullAnalysis ? 'Hide Full Analysis' : 'View Full Analysis'}
+            {showFullAnalysis ? 'Hide Full Report' : 'View Full Report'}
           </Text>
           <Text style={s.fullAnalysisArrow}>{showFullAnalysis ? '▲' : '▼'}</Text>
         </TouchableOpacity>
 
-        {/* ══ HIDDEN SECTIONS (expanded on toggle) ══════════ */}
+        {/* ══ DETAILED SECTIONS (expanded on toggle) ═════ */}
         {showFullAnalysis && (
           <View>
+
+        {/* ══ 3. INVESTMENT GUIDANCE (only when surplus exists) ═══ */}
+        {engineResult?.investment?.suggestedSip > 0 && (
+          <View style={s.investCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <View style={[s.sectionIconWrap, { backgroundColor: BLUE_L }]}>
+                <Text style={{ fontSize: 16 }}>📈</Text>
+              </View>
+              <Text style={s.sectionTitle}>Investment Guidance</Text>
+            </View>
+
+            {/* Allocation bar */}
+            <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', height: 28, marginBottom: 12 }}>
+              <View style={{ flex: engineResult.investment.equityPct, backgroundColor: BLUE, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Equity {engineResult.investment.equityPct}%</Text>
+              </View>
+              <View style={{ flex: engineResult.investment.debtPct, backgroundColor: TEAL, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Debt {engineResult.investment.debtPct}%</Text>
+              </View>
+            </View>
+
+            {/* SIP suggestion */}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 }}>
+              <Text style={{ fontSize: 13, color: TXT2 }}>Suggested SIP: </Text>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: BLUE }}>{fmtInr(engineResult.investment.suggestedSip)}</Text>
+              <Text style={{ fontSize: 13, color: TXT2 }}>/month</Text>
+            </View>
+
+            {/* Breakdown */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+              {[
+                { label: 'Large Cap', amt: engineResult.investment.allocation.largeCap, pct: '60%' },
+                { label: 'Mid/Small', amt: engineResult.investment.allocation.midSmallCap, pct: '25%' },
+                { label: 'Intl', amt: engineResult.investment.allocation.international, pct: '15%' },
+              ].map((b, i) => (
+                <View key={i} style={{ flex: 1, backgroundColor: BG_SEC, borderRadius: 10, padding: 8, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, color: TXT3, marginBottom: 2 }}>{b.label} ({b.pct})</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1 }}>{fmtInr(b.amt)}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Why line */}
+            <Text style={{ fontSize: 12, color: TXT2, fontStyle: 'italic' }}>
+              Based on age {profile?.age ?? '—'}, {engineResult.scoreLabel?.toLowerCase()} health score, and {fmtInr(engineResult.flow?.savings ?? 0)} monthly surplus
+            </Text>
+          </View>
+        )}
+
+        {/* ══ 4. ASSET ANALYSIS (only when risk detected) ═══════ */}
+        {(() => {
+          const aa = engineResult?.assetAnalysis
+          if (!aa || aa.assetCount === 0 || aa.diversified) return null
+          const labels: Record<string, string> = { liquidCash: 'Cash', mutualFunds: 'Mutual Funds', stocks: 'Stocks', epf: 'EPF', ppf: 'PPF', gold: 'Gold', realEstate: 'Real Estate', other: 'Other' }
+          const dominantLabel = labels[aa.dominantAsset?.name] ?? aa.dominantAsset?.name
+          const isOnlyOne = aa.assetCount === 1
+          const riskMsg = isOnlyOne
+            ? `100% in ${dominantLabel} — add more asset types to reduce risk`
+            : `${aa.dominantAsset?.pct}% concentrated in ${dominantLabel}`
+          const actionMsg = isOnlyOne
+            ? 'Start with a liquid fund or index SIP to diversify'
+            : aa.dominantAsset?.name === 'realEstate'
+              ? 'Increase equity exposure gradually via SIPs'
+              : aa.dominantAsset?.name === 'liquidCash'
+                ? 'Move excess cash into mutual funds or PPF for better returns'
+                : 'Rebalance by adding to underweight asset classes'
+          // Build top-3 bar segments
+          const segs = Object.entries(aa.breakdown as Record<string, number>)
+            .filter(([, pct]) => pct > 0)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 4)
+          const segColors: Record<string, string> = { liquidCash: '#22C55E', mutualFunds: '#1E3A8A', stocks: '#6366F1', epf: '#14B8A6', ppf: '#0EA5E9', gold: '#F59E0B', realEstate: '#EF4444', other: '#8B5CF6' }
+          return (
+            <View style={s.assetCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <View style={[s.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={{ fontSize: 16 }}>💼</Text>
+                </View>
+                <Text style={s.sectionTitle}>Asset Analysis</Text>
+              </View>
+
+              {/* Distribution bar */}
+              <View style={{ flexDirection: 'row', borderRadius: 8, overflow: 'hidden', height: 24, marginBottom: 10 }}>
+                {segs.map(([key, pct]) => (
+                  <View key={key} style={{ flex: pct, backgroundColor: segColors[key] || TXT3, justifyContent: 'center', alignItems: 'center' }}>
+                    {pct >= 15 && <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{labels[key] ?? key} {pct}%</Text>}
+                  </View>
+                ))}
+              </View>
+
+              {/* Risk line */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <Text style={{ fontSize: 13 }}>⚠️</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: ORANGE }}>{riskMsg}</Text>
+              </View>
+
+              {/* Action line */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 13 }}>👉</Text>
+                <Text style={{ fontSize: 13, color: TXT2 }}>{actionMsg}</Text>
+              </View>
+            </View>
+          )
+        })()}
+
+        {/* ══ 5. RISK & PROTECTION (only when gaps exist) ═══════ */}
+        {(() => {
+          const rk = engineResult?.risk
+          const income = engineResult?.flow?.income ?? 0
+          if (!rk || rk.riskLevel === 'low' || income === 0) return null
+
+          const gaps: { icon: string; status: 'missing' | 'partial'; label: string; detail: string }[] = []
+
+          // Emergency fund gap
+          if (rk.emergencyMonths < 6) {
+            const st = rk.emergencyMonths < 3 ? 'missing' as const : 'partial' as const
+            gaps.push({
+              icon: '🏦',
+              status: st,
+              label: `Emergency fund: ${rk.emergencyMonths} months`,
+              detail: st === 'missing'
+                ? `Need ${fmtInr(rk.emergencyGap)} more to reach 6-month safety net`
+                : `${fmtInr(rk.emergencyGap)} gap to full 6-month cover (${fmtInr(rk.emergencyTarget)})`,
+            })
+          }
+
+          // Term insurance gap
+          if (!rk.hasInsurance && (profile?.age ?? 0) >= 25) {
+            gaps.push({
+              icon: '❤️',
+              status: 'missing',
+              label: 'Term life insurance',
+              detail: `Consider ${fmtInr(rk.termInsuranceNeeded)} cover (15× annual income) — ~₹700–900/mo`,
+            })
+          }
+
+          // Health insurance gap
+          if (!rk.hasInsurance && (profile?.age ?? 0) >= 22) {
+            gaps.push({
+              icon: '🏥',
+              status: 'missing',
+              label: 'Health insurance',
+              detail: `₹${((rk.healthInsuranceNeeded || 0) / 100000).toFixed(0)}L family floater recommended — ~₹700–1,000/mo`,
+            })
+          }
+
+          if (gaps.length === 0) return null
+
+          // Build action line
+          const actions: string[] = []
+          if (rk.emergencyMonths < 6) {
+            const monthly = Math.ceil((rk.emergencyGap || 0) / 12)
+            actions.push(`Save ${fmtInr(monthly)}/mo in a liquid fund`)
+          }
+          if (!rk.hasInsurance && (profile?.age ?? 0) >= 25) {
+            actions.push('Get term + health cover online for best rates')
+          }
+
+          return (
+            <View style={s.riskCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <View style={[s.sectionIconWrap, { backgroundColor: RED_L }]}>
+                  <Text style={{ fontSize: 16 }}>🛡️</Text>
+                </View>
+                <View>
+                  <Text style={s.sectionTitle}>Risk & Protection</Text>
+                  <Text style={{ fontSize: 11, color: rk.riskLevel === 'high' ? RED : ORANGE, fontWeight: '600' }}>
+                    {rk.riskLevel === 'high' ? 'Needs attention' : 'Partially covered'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Gap items */}
+              {gaps.map((g, i) => {
+                const color = g.status === 'missing' ? RED : ORANGE
+                const badge = g.status === 'missing' ? '❌' : '⚠️'
+                return (
+                  <View key={i} style={{ marginBottom: i < gaps.length - 1 ? 10 : 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <Text style={{ fontSize: 14 }}>{g.icon}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1 }}>{badge} {g.label}</Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: TXT2, paddingLeft: 26 }}>{g.detail}</Text>
+                  </View>
+                )
+              })}
+
+              {/* Actions */}
+              {actions.length > 0 && (
+                <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: TXT3, marginBottom: 6 }}>NEXT STEPS</Text>
+                  {actions.map((a, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Text style={{ fontSize: 12 }}>👉</Text>
+                      <Text style={{ fontSize: 12, color: TXT2 }}>{a}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )
+        })()}
+
             {/* ── Quick Summary ── */}
             {appReport?.quick_summary && appReport.quick_summary.length > 0 && (
               <View style={s.summaryCard}>
@@ -805,6 +1011,9 @@ const s = StyleSheet.create({
 
   // Action Plan
   actionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: GREEN + '30', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  investCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '20', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  assetCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: ORANGE + '25', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  riskCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: RED + '20', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   actionStep: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   stepNumber: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   stepNumberTxt: { fontSize: 15, fontWeight: '800', fontFamily: 'Manrope_700Bold' },

@@ -71,16 +71,19 @@ function buildLocalSummary(engineResult) {
 
 function buildActionPlan(engineResult) {
   if (!engineResult?.flow) return []
-  const { flow, emergencyMonths, goalCalcs } = engineResult
+  const { flow, emergencyMonths, goalCalcs, risk } = engineResult
   const plan = []
   let step = 1
 
   if (emergencyMonths < 6 && flow.totalSpent > 0) {
     const amt = Math.ceil(flow.totalSpent * 0.25)
+    const gap = risk?.emergencyGap ?? Math.max(0, flow.totalSpent * 6 - (flow.totalSpent * emergencyMonths))
+    const monthsToFull = amt > 0 ? Math.ceil(gap / amt) : 0
     plan.push({
       step: step++,
-      title: 'Build Emergency Fund',
-      description: `Save ${fmtInr(amt)}/month in a liquid fund until 6 months covered`,
+      title: `Save ${fmtInr(amt)}/month`,
+      description: 'Into a liquid fund for your emergency safety net',
+      outcome: monthsToFull > 0 ? `Emergency fund covered in ${monthsToFull} months` : 'Full 6-month safety net achieved',
       monthly_amount: amt,
       priority: emergencyMonths < 3 ? 'high' : 'medium',
     })
@@ -88,10 +91,12 @@ function buildActionPlan(engineResult) {
 
   if (flow.savingsPct < 20 && flow.income > 0) {
     const gap = Math.round(flow.income * 0.20 - flow.savings)
+    const yearlyExtra = gap * 12
     plan.push({
       step: step++,
-      title: 'Boost Savings to 20%',
-      description: `Find ${fmtInr(gap)} more by trimming lifestyle and subscriptions`,
+      title: `Find ${fmtInr(gap)} more to save`,
+      description: 'Trim lifestyle & subscriptions to hit the 20% benchmark',
+      outcome: `That's ${fmtInr(yearlyExtra)} extra saved per year`,
       monthly_amount: gap,
       priority: flow.savingsPct < 10 ? 'high' : 'medium',
     })
@@ -101,8 +106,9 @@ function buildActionPlan(engineResult) {
     const excess = Math.round(flow.catTotals.lifestyle - flow.income * 0.30)
     plan.push({
       step: step++,
-      title: 'Trim Lifestyle Spending',
-      description: `Cut ${fmtInr(excess)} from dining, shopping & subscriptions`,
+      title: `Reduce lifestyle by ${fmtInr(excess)}`,
+      description: 'Dining, shopping & subscriptions are above the 30% limit',
+      outcome: `Frees up ${fmtInr(excess)}/month for savings or SIPs`,
       monthly_amount: excess,
       priority: 'medium',
     })
@@ -111,10 +117,12 @@ function buildActionPlan(engineResult) {
   const underfunded = (goalCalcs || []).filter(g => g.funded < 0.5 && g.monthlyNeeded > 0)
   if (underfunded.length > 0) {
     const total = underfunded.reduce((s, g) => s + g.monthlyNeeded, 0)
+    const worstName = underfunded.sort((a, b) => a.funded - b.funded)[0]?.goalName || 'your goals'
     plan.push({
       step: step++,
-      title: 'Fund Your Goals',
-      description: `Allocate ${fmtInr(total)}/month across ${underfunded.length} underfunded goal${underfunded.length > 1 ? 's' : ''}`,
+      title: `Allocate ${fmtInr(total)}/month to goals`,
+      description: `${underfunded.length} goal${underfunded.length > 1 ? 's' : ''} under 50% funded`,
+      outcome: `Gets ${worstName} back on track`,
       monthly_amount: total,
       priority: 'medium',
     })
@@ -122,10 +130,12 @@ function buildActionPlan(engineResult) {
 
   if (flow.savingsPct >= 20 && flow.savings > 0) {
     const sipAmt = Math.round(flow.savings * 0.6)
+    const yearGrowth = Math.round(sipAmt * 12 * 0.12)
     plan.push({
       step: step++,
-      title: 'Start SIP Investments',
-      description: `Invest ${fmtInr(sipAmt)}/month in diversified mutual funds`,
+      title: `Start SIP of ${fmtInr(sipAmt)}/month`,
+      description: 'Put your surplus to work in diversified funds',
+      outcome: `Could grow by ~${fmtInr(yearGrowth)} in the first year`,
       monthly_amount: sipAmt,
       priority: 'low',
     })
