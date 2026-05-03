@@ -245,6 +245,10 @@ export default function ProfileScreen() {
   const nw = totalNetWorth(assets)
   const wealthInsights = getWealthInsights(assets, nw)
   const activeCfg = ASSET_CONFIG.find(c => c.key === activeAssetSheet)
+  const liq = engineResult?.liquidFundAnalysis
+  const emergencyReserve = liq ? Math.min(assets.liquidCash, liq.emergencyTarget ?? 0) : 0
+  const goalAllocated = liq?.liquidUsedForGoals ?? 0
+  const freeWealth = Math.max(0, nw - emergencyReserve - goalAllocated)
 
   // Allocation segments
   const allocSegments = ASSET_CONFIG
@@ -327,6 +331,29 @@ export default function ProfileScreen() {
             {showNetWorth ? fmtInr(nw) : '••••'}
           </Text>
         </View>
+
+        {/* Wealth breakdown: reserved vs free */}
+        {showNetWorth && nw > 0 && (emergencyReserve > 0 || goalAllocated > 0) && (
+          <View style={{ marginBottom: 14, padding: 12, backgroundColor: BG_SEC, borderRadius: 14, gap: 6 }}>
+            {emergencyReserve > 0 && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🛡️ Emergency reserve</Text>
+                <Text style={{ fontSize: 13, color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>− {fmtInr(emergencyReserve)}</Text>
+              </View>
+            )}
+            {goalAllocated > 0 && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🎯 Allocated to goals</Text>
+                <Text style={{ fontSize: 13, color: BLUE, fontFamily: 'Manrope_700Bold' }}>− {fmtInr(goalAllocated)}</Text>
+              </View>
+            )}
+            <View style={{ height: 1, backgroundColor: BORDER, marginVertical: 2 }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: TXT1, fontFamily: 'Manrope_700Bold' }}>Free wealth</Text>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: GREEN_H, fontFamily: 'Manrope_700Bold' }}>{fmtInr(freeWealth)}</Text>
+            </View>
+          </View>
+        )}
 
         {/* Allocation bar with labels */}
         {nw > 0 && (

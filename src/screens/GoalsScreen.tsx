@@ -1,20 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  LayoutAnimation,
-  Modal,
-  PanResponder,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    LayoutAnimation,
+    Modal,
+    PanResponder,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { useAppData } from '../lib/DataContext'
@@ -206,6 +206,9 @@ export default function GoalsScreen() {
   const goalProjections = plan?.goalProjections ?? []
   const totalMonthlySIP = plan?.totalSipNeeded ?? 0
   const nearestGoal = plan?.nearestGoal ?? null
+  const liquidAnalysis = engineResult?.liquidFundAnalysis
+  const stretchGoals = plan?.stretchGoals ?? []
+  const sipCapped = plan?.sipCapped ?? false
 
   // Year slider drag
   const { width: SCREEN_W } = Dimensions.get('window')
@@ -286,6 +289,53 @@ export default function GoalsScreen() {
           </View>
         )}
 
+        {/* ── Emergency Fund Status ──────────────────────────────── */}
+        {liquidAnalysis && liquidAnalysis.emergencyTarget > 0 && (
+          <View style={[styles.realityCard, { marginBottom: 14 }]}>
+            <View style={styles.realityHeader}>
+              <Text style={styles.realityIcon}>{liquidAnalysis.emergencyStatus === 'covered' ? '✅' : liquidAnalysis.emergencyStatus === 'building' ? '🔶' : '🔴'}</Text>
+              <Text style={styles.realityTitle}>EMERGENCY FUND</Text>
+              <View style={[styles.bucketBadge, {
+                backgroundColor: liquidAnalysis.emergencyStatus === 'covered' ? GREEN_L : liquidAnalysis.emergencyStatus === 'building' ? ORANGE_L : '#FEE2E2'
+              }]}>
+                <Text style={[styles.bucketBadgeText, {
+                  color: liquidAnalysis.emergencyStatus === 'covered' ? GREEN_H : liquidAnalysis.emergencyStatus === 'building' ? ORANGE_H : RED
+                }]}>
+                  {liquidAnalysis.emergencyMonths >= 6 ? `${liquidAnalysis.emergencyMonths} months` : `${liquidAnalysis.emergencyMonths} of 6 months`}
+                </Text>
+              </View>
+            </View>
+
+            {/* Progress bar */}
+            <View style={styles.realityBarWrap}>
+              <View style={styles.realityBarTrack}>
+                <View style={[styles.realityBarFill, {
+                  width: `${Math.min(100, Math.round((liquidAnalysis.liquidCash / Math.max(1, liquidAnalysis.emergencyTarget)) * 100))}%`,
+                  backgroundColor: liquidAnalysis.emergencyStatus === 'covered' ? GREEN : liquidAnalysis.emergencyStatus === 'building' ? ORANGE : RED
+                }]} />
+              </View>
+              <Text style={[styles.realityBarLabel, { color: TXT2 }]}>{formatINRExact(liquidAnalysis.liquidCash)} / {formatINRExact(liquidAnalysis.emergencyTarget)}</Text>
+            </View>
+
+            {/* Liquid allocation breakdown */}
+            {liquidAnalysis.excessLiquid > 0 && (
+              <View style={{ marginTop: 8, padding: 10, backgroundColor: GREEN_L, borderRadius: 10 }}>
+                <Text style={{ fontSize: 12, color: GREEN_H, fontFamily: 'Manrope_700Bold' }}>
+                  {formatINRExact(liquidAnalysis.excessLiquid)} excess liquid
+                  {liquidAnalysis.liquidUsedForGoals > 0 ? ` → ${formatINRExact(liquidAnalysis.liquidUsedForGoals)} allocated to short-term goals` : ' → available for goals'}
+                </Text>
+              </View>
+            )}
+            {liquidAnalysis.emergencyGap > 0 && (
+              <View style={{ marginTop: 8, padding: 10, backgroundColor: '#FEF3C7', borderRadius: 10 }}>
+                <Text style={{ fontSize: 12, color: ORANGE_H, fontFamily: 'Manrope_400Regular' }}>
+                  {formatINRExact(liquidAnalysis.emergencyGap)} more needed · ~{formatINRExact(Math.ceil(liquidAnalysis.emergencyGap / 6))}/mo for 6 months
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ── Plan vs Reality Card ───────────────────────────────── */}
         {configuredGoals.length > 0 && totalMonthlySIP > 0 && (() => {
           const monthlySavings = plan?.monthlySavings ?? 0
@@ -361,12 +411,26 @@ export default function GoalsScreen() {
                       </View>
                     </View>
 
+                    {/* Liquid allocation note for short-term bucket */}
+                    {bucket.totalLiquidUsed > 0 && (
+                      <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+                        <Text style={{ fontSize: 11, color: GREEN_H, fontFamily: 'Manrope_400Regular' }}>
+                          💧 {formatINRExact(bucket.totalLiquidUsed)} from liquid funds reduces SIP needed
+                        </Text>
+                      </View>
+                    )}
+
                     {/* Goals in this bucket */}
                     {bucket.goals.map((gp: any) => (
                       <View key={gp.id} style={styles.bucketGoalRow}>
                         <Text style={{ fontSize: 13 }}>{goalEmoji(gp.name)}</Text>
                         <Text style={styles.bucketGoalName} numberOfLines={1}>{gp.name}</Text>
-                        <Text style={[styles.bucketGoalSip, { color: bucketAdvice.tagColor }]}>{fmtInr(gp.monthlyNeeded)}/mo</Text>
+                        {gp.priority === 'stretch' && (
+                          <View style={{ borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, backgroundColor: ORANGE_L, marginRight: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>STRETCH</Text>
+                          </View>
+                        )}
+                        <Text style={[styles.bucketGoalSip, { color: gp.priority === 'stretch' ? TXT3 : bucketAdvice.tagColor }]}>{fmtInr(gp.monthlyNeeded)}/mo</Text>
                       </View>
                     ))}
 
@@ -388,6 +452,14 @@ export default function GoalsScreen() {
                   </View>
                 )
               })}
+
+              {sipCapped && stretchGoals.length > 0 && (
+                <View style={[styles.realityWarnBox, { backgroundColor: '#F3E8FF', borderColor: '#7C3AED' }]}>
+                  <Text style={[styles.realityWarnText, { color: '#6D28D9' }]}>
+                    📌 SIP capped at 40% of income. {stretchGoals.length} goal{stretchGoals.length > 1 ? 's' : ''} marked as stretch — extend timeline or increase income to fund them.
+                  </Text>
+                </View>
+              )}
 
               {hasGap && (
                 <View style={styles.realityWarnBox}>
@@ -474,6 +546,11 @@ export default function GoalsScreen() {
                             </View>
                           ) : null
                         })()}
+                        {gp?.priority === 'stretch' && (
+                          <View style={{ borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: ORANGE_L }}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>STRETCH</Text>
+                          </View>
+                        )}
                       </View>
                       <Text style={styles.goalAmounts}>
                         {fmtInr(goal.target_amount)}
@@ -509,6 +586,15 @@ export default function GoalsScreen() {
                       </View>
                       <Text style={{ fontSize: 12, color: TXT3, marginLeft: 6 }}>{expandedGoalId === goal.id ? '▲' : '▼'}</Text>
                     </View>
+
+                    {/* Liquid allocation note for this goal */}
+                    {gp?.liquidAllocated > 0 && (
+                      <View style={{ paddingHorizontal: 12, paddingTop: 6 }}>
+                        <Text style={{ fontSize: 11, color: GREEN_H, fontFamily: 'Manrope_400Regular' }}>
+                          💧 {formatINRExact(gp.liquidAllocated)} covered from liquid funds
+                        </Text>
+                      </View>
+                    )}
 
                     {/* Instruments — collapsible */}
                     {expandedGoalId === goal.id && (

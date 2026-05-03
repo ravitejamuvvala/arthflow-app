@@ -1,7 +1,7 @@
 // ─── Unified Decision Engine ────────────────────────────────────────────
 // Single entry point: takes all user data, returns actionable output
 
-import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots } from './calculations'
+import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots, mapCategory } from './calculations'
 import { generateInsights } from './insights'
 
 // ─── Unified Score (0-100) ──────────────────────────────────────────────
@@ -159,28 +159,85 @@ function sipForGoal(remaining, months, annualCagr) {
 }
 
 // ─── Build complete goal horizon plan ───────────────────────────────────
-function buildGoalHorizonPlan(configuredGoals, monthlySavings) {
+// Accepts assets + monthlyExpenses to:
+//  1. Allocate excess liquid cash to short-term goals (reduces their SIP)
+//  2. Cap total SIP at 40% of income (mark overflow goals as "stretch")
+function buildGoalHorizonPlan(configuredGoals, monthlySavings, { assets, monthlyExpenses, income } = {}) {
   const thisYear = new Date().getFullYear()
 
-  // Per-goal projections with horizon advice
-  const goalProjections = configuredGoals.map(g => {
+  // ── Step 1: Compute excess liquid cash after emergency reserve ──
+  const liquidCash = Number(assets?.liquidCash) || 0
+  const emergencyTarget = (monthlyExpenses || 0) * 6
+  const excessLiquid = Math.max(0, liquidCash - emergencyTarget)
+
+  // ── Step 2: Per-goal projections sorted by deadline (nearest first) ──
+  const rawGoals = configuredGoals.map(g => {
     const targetYear = g.target_date ? new Date(g.target_date).getFullYear() : thisYear + 5
     const months = monthsUntilYear(targetYear)
     const yearsLeft = Math.ceil(months / 12)
-    const remaining = Math.max(0, g.target_amount - g.saved_amount)
+    const remaining = Math.max(0, g.target_amount - (g.saved_amount || g.current_amount || 0))
     const advice = getHorizonAdvice(yearsLeft)
-    const monthlyNeeded = sipForGoal(remaining, months, advice.cagr)
     return {
       id: g.id, name: g.name, targetAmount: g.target_amount,
-      savedAmount: g.saved_amount, targetYear, yearsLeft, months,
-      remaining, monthlyNeeded, advice,
+      savedAmount: g.saved_amount || g.current_amount || 0,
+      targetYear, yearsLeft, months, remaining, advice,
+    }
+  }).sort((a, b) => a.yearsLeft - b.yearsLeft)
+
+  // ── Step 3: Allocate excess liquid to short-term goals (≤3 yrs) ──
+  let liquidPool = excessLiquid
+  const goalProjections = rawGoals.map(g => {
+    let liquidAllocated = 0
+    let adjustedRemaining = g.remaining
+
+    // Only short-term goals (≤3 yrs) get liquid cash allocation
+    if (g.advice.bucket === 'short' && liquidPool > 0 && adjustedRemaining > 0) {
+      liquidAllocated = Math.min(liquidPool, adjustedRemaining)
+      liquidPool -= liquidAllocated
+      adjustedRemaining -= liquidAllocated
+    }
+
+    const monthlyNeeded = sipForGoal(adjustedRemaining, g.months, g.advice.cagr)
+    return {
+      ...g,
+      liquidAllocated,
+      adjustedRemaining,
+      monthlyNeeded,
+      priority: 'core',  // may be downgraded to 'stretch' in step 4
     }
   })
 
-  const totalSipNeeded = goalProjections.reduce((s, g) => s + g.monthlyNeeded, 0)
-  const gap = totalSipNeeded - (monthlySavings || 0)
-  const fundedPct = monthlySavings > 0 ? Math.min(100, Math.round((monthlySavings / totalSipNeeded) * 100)) : 0
-  const nearestGoal = goalProjections.filter(g => g.yearsLeft > 0).sort((a, b) => a.yearsLeft - b.yearsLeft)[0] || null
+  // ── Step 4: SIP cap — if total SIP > 40% of income, mark overflow as stretch ──
+  const maxSipBudget = (income || 0) * 0.40
+  let sipBudgetLeft = maxSipBudget > 0 ? maxSipBudget : Infinity
+  let totalSipNeeded = 0
+  let cappedSipNeeded = 0
+
+  // Fund nearest goals first until budget exhausted
+  goalProjections.forEach(g => {
+    totalSipNeeded += g.monthlyNeeded
+    if (sipBudgetLeft >= g.monthlyNeeded) {
+      sipBudgetLeft -= g.monthlyNeeded
+      cappedSipNeeded += g.monthlyNeeded
+      g.priority = 'core'
+    } else if (sipBudgetLeft > 0) {
+      // Partial fit — still core but note the squeeze
+      cappedSipNeeded += g.monthlyNeeded
+      sipBudgetLeft = 0
+      g.priority = 'core'
+    } else {
+      g.priority = 'stretch'
+    }
+  })
+
+  // If no income set, use raw total (no capping)
+  const effectiveSipNeeded = maxSipBudget > 0 ? Math.min(totalSipNeeded, maxSipBudget) : totalSipNeeded
+
+  const gap = effectiveSipNeeded - (monthlySavings || 0)
+  const fundedPct = monthlySavings > 0 && effectiveSipNeeded > 0
+    ? Math.min(100, Math.round((monthlySavings / effectiveSipNeeded) * 100)) : 0
+  const nearestGoal = goalProjections.filter(g => g.yearsLeft > 0)[0] || null
+  const stretchGoals = goalProjections.filter(g => g.priority === 'stretch')
 
   // Group into horizon buckets
   const bucketDefs = [
@@ -196,57 +253,86 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings) {
       return b === 'long' || b === 'vlong'
     })
     const totalSip = goals.reduce((s, g) => s + g.monthlyNeeded, 0)
-    const totalRemaining = goals.reduce((s, g) => s + g.remaining, 0)
+    const totalRemaining = goals.reduce((s, g) => s + g.adjustedRemaining, 0)
+    const totalLiquidUsed = goals.reduce((s, g) => s + g.liquidAllocated, 0)
     return {
       ...def,
       goals,
       totalSip,
       totalRemaining,
+      totalLiquidUsed,
       advice: goals.length > 0 ? goals[0].advice : null,
     }
   }).filter(b => b.goals.length > 0)
 
   return {
     goalProjections,
-    totalSipNeeded,
+    totalSipNeeded: effectiveSipNeeded,
+    totalSipRaw: totalSipNeeded,       // uncapped total (for display)
+    sipCapped: totalSipNeeded > maxSipBudget && maxSipBudget > 0,
     gap,
     fundedPct,
     funded: gap <= 0,
     nearestGoal,
     buckets,
     monthlySavings: monthlySavings || 0,
+    liquidUsed: excessLiquid - liquidPool,  // how much liquid was allocated
+    excessLiquid,                           // total available after emergency
+    stretchGoals,                           // goals that don't fit in SIP budget
   }
 }
 
 export { getHorizonAdvice, sipForGoal }
 
 // ─── Adaptive Budget Rule ───────────────────────────────────────────────
-// Computes a personalised budget split from the user's actual financial data.
-// Adjusts the base age-tier for EMI load, emergency gaps, goal urgency, etc.
+// Computes a personalised budget split anchored to goal SIP requirements.
+// Flow: SIP floor → age seed → EMI/emergency adjustments → behavior calibration → compliance nudge
 
-function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, nearestGoalYears, incomeType }) {
-  // 1. Age-based seed (classic 50/30/20 variant)
+function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, nearestGoalYears, incomeType, historicalSavingsPct, historicalWantsPct, goalSipNeeded, compliance, maturityMonths }) {
+  // 1. Goal SIP as savings FLOOR — goals are non-negotiable, everything adjusts around them
+  //    For new users (< 4 completed months): use SIP floor at 50% weight — don't force aggressive
+  //    savings before we understand their spending patterns
+  const rawSipFloorPct = (goalSipNeeded > 0 && income > 0) ? Math.round((goalSipNeeded / income) * 100) : 0
+  const mature = (maturityMonths ?? 0) >= 4
+  const sipFloorPct = mature ? rawSipFloorPct : Math.round(rawSipFloorPct * 0.5)
+
+  // 2. Age-based seed (classic 50/30/20 variant)
   let needs, wants, save
   if (age < 30)      { needs = 50; wants = 20; save = 30 }
   else if (age < 45)  { needs = 50; wants = 25; save = 25 }
   else                { needs = 55; wants = 25; save = 20 }
 
-  // 2. Adjust needs upward if EMIs already force it
+  // 3. Enforce SIP floor — savings must at least cover goal SIP
+  //    Add 3% buffer for emergency/buffer above SIP
+  if (sipFloorPct > 0) {
+    const sipWithBuffer = sipFloorPct + 3
+    if (sipWithBuffer > save) {
+      const bump = sipWithBuffer - save
+      save = sipWithBuffer
+      // Compress lifestyle first
+      const wantsCut = Math.min(bump, wants - 10)
+      wants -= wantsCut
+      // If still not enough, compress needs
+      if (bump > wantsCut) {
+        needs -= (bump - wantsCut)
+      }
+    }
+  }
+
+  // 4. Adjust needs upward if EMIs already force it
   const emiPct = income > 0 ? Math.round((emiAmount / income) * 100) : 0
   if (emiPct > 0) {
-    // Essentials floor = non-EMI essentials (assume at least 25%) + actual EMI %
     const essentialsFloor = 25 + emiPct
     if (essentialsFloor > needs) {
       const bump = essentialsFloor - needs
       needs = essentialsFloor
-      // Compress lifestyle first, then savings
       const wantsCut = Math.min(bump, wants - 10)
       wants -= wantsCut
       save -= (bump - wantsCut)
     }
   }
 
-  // 3. Boost savings if emergency fund is critically low
+  // 5. Boost savings if emergency fund is critically low
   if (emergencyMonths < 3) {
     const boost = emergencyMonths < 1 ? 10 : 5
     const available = wants - 10
@@ -257,8 +343,8 @@ function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, neares
     }
   }
 
-  // 4. Boost savings if a goal is urgent (< 3 years away)
-  if (nearestGoalYears !== null && nearestGoalYears < 3) {
+  // 6. Boost savings if a goal is urgent (< 3 years away) and SIP not already covering it
+  if (nearestGoalYears !== null && nearestGoalYears < 3 && sipFloorPct === 0) {
     const goalBoost = nearestGoalYears < 1.5 ? 5 : 3
     const available = wants - 10
     const actualBoost = Math.min(goalBoost, available)
@@ -268,7 +354,7 @@ function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, neares
     }
   }
 
-  // 5. Variable income (freelance/business) needs more buffer
+  // 7. Variable income (freelance/business) needs more buffer
   if (incomeType && ['freelance', 'business', 'other'].includes(incomeType.toLowerCase())) {
     const buffer = 3
     const available = wants - 10
@@ -279,64 +365,125 @@ function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, neares
     }
   }
 
-  // 6. Apply hard caps and re-balance
+  // 8. Historical behavior calibration — make targets realistic but stretching
+  if (historicalSavingsPct !== null) {
+    const savingsGap = save - historicalSavingsPct
+    if (savingsGap > 10) {
+      // User consistently saves much less — set realistic stretch (halfway)
+      const realisticSave = Math.max(Math.round(historicalSavingsPct + savingsGap * 0.5), sipFloorPct + 3)
+      const reduction = save - realisticSave
+      if (reduction > 0) {
+        save = realisticSave
+        wants += reduction
+      }
+    }
+  }
+  if (historicalWantsPct !== null) {
+    const wantsOver = historicalWantsPct - wants
+    if (wantsOver > 8) {
+      const accept = Math.round(wantsOver * 0.4)
+      wants += accept
+      save -= Math.min(accept, save - Math.max(15, sipFloorPct + 3))
+    }
+  }
+
+  // 9. Compliance nudge — adjust based on last month's follow-through
+  if (compliance !== null && compliance !== undefined) {
+    if (compliance >= 90) {
+      // Excellent compliance — stretch target slightly (+2% savings)
+      const stretch = Math.min(2, wants - 10)
+      if (stretch > 0) {
+        save += stretch
+        wants -= stretch
+      }
+    } else if (compliance < 50) {
+      // Poor compliance — ease back to build achievable habit
+      const ease = Math.min(3, save - Math.max(15, sipFloorPct + 3))
+      if (ease > 0) {
+        save -= ease
+        wants += ease
+      }
+    }
+    // 50-89: hold steady — no adjustment
+  }
+
+  // 10. Apply hard caps and re-balance
   needs = Math.min(65, Math.max(30, needs))
-  save = Math.max(15, save)
+  save = Math.max(15, Math.max(sipFloorPct, save))  // never below SIP floor or 15%
   wants = Math.max(10, wants)
   // Normalize to 100
   const total = needs + wants + save
   if (total !== 100) {
-    // Adjust wants (the flexible bucket) to make it 100
     wants = 100 - needs - save
     if (wants < 10) {
       wants = 10
-      // If still over, compress needs
       needs = 100 - wants - save
     }
   }
 
-  // 7. Pick a human-readable label + rationale
+  // 11. Pick a human-readable label + rationale
   let label, rationale
-  if (emiPct > 25) {
-    label = `${needs} / ${wants} / ${save}`
+  const hasHistory = historicalSavingsPct !== null
+  label = `${needs} / ${wants} / ${save}`
+
+  if (!mature) {
+    rationale = 'Getting Started — learning your spending patterns'
+  } else if (emiPct > 25) {
     rationale = 'Debt-Adjusted — EMIs raised your essentials floor'
   } else if (emergencyMonths < 3) {
-    label = `${needs} / ${wants} / ${save}`
     rationale = 'Safety First — building emergency cover'
+  } else if (sipFloorPct > 0 && sipFloorPct >= save - 5) {
+    rationale = 'Goal-Anchored — savings floor set by your goal SIPs'
   } else if (nearestGoalYears !== null && nearestGoalYears < 3) {
-    label = `${needs} / ${wants} / ${save}`
     rationale = 'Goal Sprint — near-term goal needs priority'
+  } else if (hasHistory && compliance !== null && compliance >= 90) {
+    rationale = 'Leveling Up — great last month, stretching your target'
+  } else if (hasHistory && compliance !== null && compliance < 50) {
+    rationale = 'Building Habits — eased target to build consistency'
+  } else if (hasHistory && historicalSavingsPct < save - 5) {
+    rationale = 'Stretch Target — nudging you above your recent savings rate'
+  } else if (hasHistory && historicalWantsPct !== null && historicalWantsPct > wants + 5) {
+    rationale = 'Lifestyle Reset — pulling back from recent spending habits'
+  } else if (hasHistory && historicalSavingsPct >= save) {
+    rationale = 'On Track — your recent savings match or beat the target'
   } else if (age < 30) {
-    label = `${needs} / ${wants} / ${save}`
     rationale = 'Wealth Builder — aggressive savings for your age'
   } else if (age < 45) {
-    label = `${needs} / ${wants} / ${save}`
     rationale = 'Balanced Growth — steady saving + living well'
   } else {
-    label = `${needs} / ${wants} / ${save}`
     rationale = 'Capital Preservation — protecting what you built'
   }
 
   return { needsTarget: needs, wantsTarget: wants, savingsTarget: save, label, rationale }
 }
 
-export function runEngine({ income, transactions, allTransactions, goals, assets, age, profile }) {
+export function runEngine({ income, transactions, allTransactions, goals, assets, age, profile, savedPlan }) {
   const flow = getMoneyFlow(transactions, income, profile)
 
-  // ─── Stable monthly expense estimate ──────────────────────
-  // Use last month's actual spending (from allTransactions) for a stable estimate.
-  // Falls back to profile onboarding data, then current month's partial spend.
-  const prevMonthExpenses = (() => {
+  // ─── Stable monthly expense baseline ────────────────────────
+  // Used for budget rule, emergency cover, and other structural decisions.
+  // Priority: avg of past completed months → last month → profile onboarding.
+  // NEVER uses current month's partial spend — that would make the rule flicker.
+  const profileExpenses = (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
+  const pastMonthExpenses = (() => {
     if (!allTransactions || allTransactions.length === 0) return 0
     const now = new Date()
-    const pmStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const pmEnd   = new Date(now.getFullYear(), now.getMonth(), 1)
-    return allTransactions
-      .filter(t => t.type === 'expense' && new Date(t.date) >= pmStart && new Date(t.date) < pmEnd)
-      .reduce((s, t) => s + t.amount, 0)
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    // Only completed months (exclude current)
+    const pastTxns = allTransactions.filter(t => t.type === 'expense' && new Date(t.date) < currentMonthStart)
+    if (pastTxns.length === 0) return 0
+    // Group by month
+    const monthMap = {}
+    pastTxns.forEach(t => {
+      const d = new Date(t.date)
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      monthMap[key] = (monthMap[key] || 0) + t.amount
+    })
+    const monthTotals = Object.values(monthMap)
+    // Average of all completed months
+    return Math.round(monthTotals.reduce((s, v) => s + v, 0) / monthTotals.length)
   })()
-  const profileExpenses = (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
-  const monthlyExpenses = prevMonthExpenses || profileExpenses || flow.totalSpent || 0
+  const monthlyExpenses = pastMonthExpenses || profileExpenses || 0
 
   // Emergency fund calculation
   const liquidCash = assets?.liquidCash || 0
@@ -513,10 +660,106 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
   }
 
   // ─── Goal Horizon Plan ─────────────────────────────────────
-  const goalHorizonPlan = buildGoalHorizonPlan(configuredGoals, flow.savings)
+  const goalHorizonPlan = buildGoalHorizonPlan(configuredGoals, flow.savings, {
+    assets,
+    monthlyExpenses,
+    income: flow.income,
+  })
 
   // ─── Adaptive Budget ──────────────────────────────────────
   const nearestGoalYears = goalHorizonPlan?.nearestGoal?.yearsLeft ?? null
+
+  // Historical behavior from past completed months (exclude current month)
+  const pastCompletedSnapshots = (() => {
+    if (snapshots.length < 2) return []
+    return snapshots.slice(0, -1)
+  })()
+  const historicalSavingsPct = pastCompletedSnapshots.length > 0
+    ? Math.round(pastCompletedSnapshots.reduce((s, snap) => s + snap.savedPct, 0) / pastCompletedSnapshots.length)
+    : null
+
+  // Historical wants% — compute from actual category-level data (past months)
+  const historicalWantsPct = (() => {
+    if (!allTransactions || allTransactions.length === 0) return null
+    const now = new Date()
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const pastExpenses = allTransactions.filter(t => t.type === 'expense' && new Date(t.date) < currentMonthStart)
+    if (pastExpenses.length === 0) return null
+    const lifestyleTotal = pastExpenses.filter(t => mapCategory(t.category || 'other') === 'lifestyle').reduce((s, t) => s + t.amount, 0)
+    const totalPastSpent = pastExpenses.reduce((s, t) => s + t.amount, 0)
+    const avgIncome = pastCompletedSnapshots.length > 0
+      ? pastCompletedSnapshots.reduce((s, snap) => s + snap.income, 0) / pastCompletedSnapshots.length
+      : flow.income
+    return avgIncome > 0 ? Math.round((lifestyleTotal / (pastCompletedSnapshots.length || 1) / avgIncome) * 100) : null
+  })()
+
+  // Goal SIP needed (total monthly across all goals)
+  const goalSipNeeded = goalHorizonPlan?.totalSipNeeded ?? 0
+
+  // ─── Category Pattern Detection ───────────────────────────
+  // Identify repeat overspend categories from past months
+  const categoryPatterns = (() => {
+    if (!allTransactions || allTransactions.length === 0) return []
+    const now = new Date()
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const pastExpenses = allTransactions.filter(t => t.type === 'expense' && new Date(t.date) < currentMonthStart)
+    if (pastExpenses.length === 0) return []
+
+    // Group by month → category → total
+    const monthCatMap = {}
+    pastExpenses.forEach(t => {
+      const d = new Date(t.date)
+      const mKey = `${d.getFullYear()}-${d.getMonth()}`
+      const cat = t.category || 'other'
+      if (!monthCatMap[mKey]) monthCatMap[mKey] = {}
+      monthCatMap[mKey][cat] = (monthCatMap[mKey][cat] || 0) + t.amount
+    })
+    const monthCount = Object.keys(monthCatMap).length
+    if (monthCount === 0) return []
+
+    // Average per category across months
+    const catAvg = {}
+    Object.values(monthCatMap).forEach(cats => {
+      Object.entries(cats).forEach(([cat, amt]) => {
+        catAvg[cat] = (catAvg[cat] || 0) + amt
+      })
+    })
+    Object.keys(catAvg).forEach(cat => { catAvg[cat] = Math.round(catAvg[cat] / monthCount) })
+
+    // Detect which categories are consistently high (> 20% of avg income)
+    const avgIncome = pastCompletedSnapshots.length > 0
+      ? pastCompletedSnapshots.reduce((s, snap) => s + snap.income, 0) / pastCompletedSnapshots.length
+      : flow.income
+    const threshold = avgIncome * 0.12  // flag categories > 12% of income
+    return Object.entries(catAvg)
+      .filter(([, avg]) => avg >= threshold)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([category, avgAmount]) => ({
+        category,
+        avgAmount,
+        pctOfIncome: avgIncome > 0 ? Math.round((avgAmount / avgIncome) * 100) : 0,
+        bucket: mapCategory(category),
+      }))
+  })()
+
+  // ─── Compliance Score ─────────────────────────────────────
+  // How well user followed last month's budget rule (compare actual vs targets)
+  // Uses the last completed month's data vs the budget targets
+  const compliance = (() => {
+    if (pastCompletedSnapshots.length === 0) return null
+    const lastMonth = pastCompletedSnapshots[pastCompletedSnapshots.length - 1]
+    if (!lastMonth || lastMonth.income <= 0) return null
+    const lastSavedPct = lastMonth.savedPct
+    // Simple compliance: how close was savings% to last target?
+    // Use current target as proxy (will improve once monthly_plans is persisted)
+    const prevPlan = savedPlan  // from Supabase if available
+    const targetSave = prevPlan?.savings_target ?? (flow.income > 0 ? 25 : 20)  // fallback to default
+    if (targetSave <= 0) return 100
+    const ratio = Math.min(100, Math.round((lastSavedPct / targetSave) * 100))
+    return Math.max(0, ratio)
+  })()
+
   const budget = computeAdaptiveBudget({
     age: age || 25,
     income: flow.income,
@@ -524,25 +767,66 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     emergencyMonths,
     nearestGoalYears,
     incomeType: profile?.income_type,
+    historicalSavingsPct,
+    historicalWantsPct,
+    goalSipNeeded,
+    compliance,
+    maturityMonths: pastCompletedSnapshots.length,
   })
 
-  // ─── Blueprint Hint — actionable one-liner for the budget card ──
+  // Attach computed metadata to budget for persistence
+  budget.categoryPatterns = categoryPatterns
+  budget.compliance = compliance
+  budget.goalSipNeeded = goalSipNeeded
+  budget.goalSipGap = goalHorizonPlan?.gap ?? 0
+
+  // ─── Blueprint Strategy + Verdict ───────────────────────────
+  // Strategy: rationale + how user is performing against savings target
+  const _savingsPct = flow.savingsPct ?? 0
+  if (_savingsPct >= budget.savingsTarget) {
+    budget.strategy = `${budget.rationale.split(' — ')[0]} · saving ${_savingsPct}% against ${budget.savingsTarget}% target`
+  } else {
+    budget.strategy = `${budget.rationale.split(' — ')[0]} · saving ${_savingsPct}% — target is ${budget.savingsTarget}%`
+  }
+
+  // Verdict: actionable one-liner with severity type
   const _needsGap = Math.round(flow.needsPct - budget.needsTarget)
   const _wantsGap = Math.round(flow.wantsPct - budget.wantsTarget)
-  const _savingsGap = Math.round(budget.savingsTarget - flow.savingsPct)
-  let blueprintHint = ''
+  const _savingsGap = Math.round(budget.savingsTarget - _savingsPct)
+  const _wantsOver = _wantsGap > 0 ? Math.round(flow.income * _wantsGap / 100) : 0
+  const _needsOver = _needsGap > 0 ? Math.round(flow.income * _needsGap / 100) : 0
+
+  let verdictText = ''
+  let verdictType = 'positive' // 'positive' | 'warning' | 'critical'
+
   if (flow.income <= 0) {
-    blueprintHint = 'Add income to see your budget split'
+    verdictText = 'Add income to see your budget split'
+    verdictType = 'warning'
+  } else if (lifestyleCreep.detected && _wantsGap > 0) {
+    verdictText = `Lifestyle up ${lifestyleCreep.pctChange}% vs last month — trim ₹${_wantsOver.toLocaleString('en-IN')} to hit target`
+    verdictType = 'critical'
+  } else if (_needsGap > 5 && _savingsGap > 0) {
+    verdictText = `Essentials at ${flow.needsPct}% — ₹${_needsOver.toLocaleString('en-IN')} over budget`
+    verdictType = 'critical'
   } else if (_savingsGap > 0 && _wantsGap > 0) {
-    blueprintHint = `Trim lifestyle ${_wantsGap}% → scope to invest more`
+    verdictText = `Trim lifestyle by ${_wantsGap}% (₹${_wantsOver.toLocaleString('en-IN')}) → more to invest`
+    verdictType = 'warning'
   } else if (_needsGap > 5) {
-    blueprintHint = `Essentials up ${_needsGap}% — look for cuts`
+    verdictText = `Essentials up ${_needsGap}% — look for ways to cut`
+    verdictType = 'warning'
   } else if (_savingsGap > 0) {
-    blueprintHint = `${_savingsGap}% below savings goal — room to grow`
+    verdictText = `${_savingsGap}% below savings goal — room to grow wealth`
+    verdictType = 'warning'
+  } else if (trend.spendingTrend === 'decreasing' && _savingsPct >= budget.savingsTarget) {
+    verdictText = 'Spending down, savings on track — great momentum ✓'
+    verdictType = 'positive'
   } else {
-    blueprintHint = 'Well balanced this month ✓'
+    verdictText = 'Well balanced this month ✓'
+    verdictType = 'positive'
   }
-  budget.blueprintHint = blueprintHint
+  budget.verdict = { text: verdictText, type: verdictType }
+  // Keep blueprintHint for backward compat
+  budget.blueprintHint = verdictText
 
   // Insights (after budget so thresholds are adaptive)
   const allInsights = generateInsights({ flow, goals, profile, assets, emergencyMonths, goalCalcs, budget })
@@ -579,6 +863,20 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     statusMessage = 'Multiple areas need attention — start with the top action below.'
   }
 
+  // ─── Liquid Fund Analysis ───────────────────────────────────
+  // Exposes how liquid cash is split between emergency reserve and goal allocation
+  const liquidFundAnalysis = {
+    liquidCash,
+    emergencyTarget,
+    emergencyGap,
+    emergencyMonths,
+    emergencyStatus: emergencyMonths >= 6 ? 'covered' : emergencyMonths >= 3 ? 'building' : 'critical',
+    excessLiquid: goalHorizonPlan?.excessLiquid ?? 0,
+    liquidUsedForGoals: goalHorizonPlan?.liquidUsed ?? 0,
+    maturityMonths: pastCompletedSnapshots.length,
+    mature: pastCompletedSnapshots.length >= 4,
+  }
+
   return {
     flow,
     score,
@@ -600,6 +898,7 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     lifestyleCreep,
     goalHorizonPlan,
     budget,
+    liquidFundAnalysis,
   }
 }
 

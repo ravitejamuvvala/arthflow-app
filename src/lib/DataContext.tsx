@@ -49,14 +49,14 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     const user = sess?.user
     if (!user) { setLoading(false); return null }
 
-    const fourMonthsAgo = new Date()
-    fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 3)
-    fourMonthsAgo.setDate(1)
-    fourMonthsAgo.setHours(0, 0, 0, 0)
+    const fetchStart = new Date()
+    fetchStart.setMonth(fetchStart.getMonth() - 4)
+    fetchStart.setDate(1)
+    fetchStart.setHours(0, 0, 0, 0)
 
     const [profileRes, txRes, goalRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('transactions').select('*').gte('date', fourMonthsAgo.toISOString()).order('date', { ascending: false }),
+      supabase.from('transactions').select('*').gte('date', fetchStart.toISOString()).order('date', { ascending: false }),
       supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
     ])
 
@@ -102,7 +102,27 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     const thisMonthTxFinal = txs.filter(t => new Date(t.date) >= startOfMonth)
     const baseIncome = incomeOverride ?? p?.monthly_income ?? 0
 
-    const result = runEngine({
+    // ── Fetch saved monthly plan (locked budget rule for this month) ──
+    const currentMonth = `${startOfMonth.getFullYear()}-${String(startOfMonth.getMonth() + 1).padStart(2, '0')}`
+    const { data: existingPlan } = await supabase
+      .from('monthly_plans')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .single()
+
+    // Also fetch last month's plan for compliance scoring
+    const prevMonthDate = new Date(startOfMonth)
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1)
+    const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`
+    const { data: prevPlan } = await supabase
+      .from('monthly_plans')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('month', prevMonth)
+      .single()
+
+    const result: any = runEngine({
       income: baseIncome,
       transactions: thisMonthTxFinal,
       allTransactions: txs,
@@ -110,7 +130,81 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
       assets: assetData,
       age: p?.age ?? 0,
       profile: p,
+      savedPlan: prevPlan ?? null,
     })
+
+    // ── Persist monthly plan if not yet saved for this month ──
+    if (!existingPlan && result.budget && baseIncome > 0) {
+      const planRow = {
+        user_id: user.id,
+        month: currentMonth,
+        needs_target: result.budget.needsTarget,
+        wants_target: result.budget.wantsTarget,
+        savings_target: result.budget.savingsTarget,
+        label: result.budget.label,
+        rationale: result.budget.rationale,
+        strategy: result.budget.strategy ?? null,
+        verdict_text: result.budget.verdict?.text ?? null,
+        verdict_type: result.budget.verdict?.type ?? 'positive',
+        category_patterns: result.budget.categoryPatterns ?? [],
+        compliance_score: result.budget.compliance ?? null,
+        goal_sip_needed: result.budget.goalSipNeeded ?? 0,
+        goal_sip_gap: result.budget.goalSipGap ?? 0,
+      }
+      await supabase.from('monthly_plans').upsert(planRow, { onConflict: 'user_id,month' })
+      // Use the freshly computed plan
+      result.budget._locked = true
+      result.budget._month = currentMonth
+    } else if (existingPlan) {
+      // Lock the budget to the saved plan — override engine's computed values
+      result.budget.needsTarget = existingPlan.needs_target
+      result.budget.wantsTarget = existingPlan.wants_target
+      result.budget.savingsTarget = existingPlan.savings_target
+      result.budget.label = existingPlan.label
+      result.budget.rationale = existingPlan.rationale
+      result.budget.categoryPatterns = existingPlan.category_patterns ?? []
+      result.budget.compliance = existingPlan.compliance_score
+      result.budget.goalSipNeeded = existingPlan.goal_sip_needed ?? 0
+      result.budget.goalSipGap = existingPlan.goal_sip_gap ?? 0
+      result.budget._locked = true
+      result.budget._month = currentMonth
+
+      // Re-compute strategy + verdict with locked targets but current spending
+      const flow = result.flow
+      const _savingsPct = flow.savingsPct ?? 0
+      const ratName = existingPlan.rationale.split(' — ')[0]
+      result.budget.strategy = _savingsPct >= existingPlan.savings_target
+        ? `${ratName} · saving ${_savingsPct}% against ${existingPlan.savings_target}% target`
+        : `${ratName} · saving ${_savingsPct}% — target is ${existingPlan.savings_target}%`
+
+      const _needsGap = Math.round(flow.needsPct - existingPlan.needs_target)
+      const _wantsGap = Math.round(flow.wantsPct - existingPlan.wants_target)
+      const _savingsGap = Math.round(existingPlan.savings_target - _savingsPct)
+      const _wantsOver = _wantsGap > 0 ? Math.round(flow.income * _wantsGap / 100) : 0
+      const _needsOver = _needsGap > 0 ? Math.round(flow.income * _needsGap / 100) : 0
+
+      let verdictText = ''
+      let verdictType = 'positive'
+      if (flow.income <= 0) {
+        verdictText = 'Add income to see your budget split'
+        verdictType = 'warning'
+      } else if (_needsGap > 5 && _savingsGap > 0) {
+        verdictText = `Essentials at ${flow.needsPct}% — ₹${_needsOver.toLocaleString('en-IN')} over budget`
+        verdictType = 'critical'
+      } else if (_savingsGap > 0 && _wantsGap > 0) {
+        verdictText = `Trim lifestyle by ${_wantsGap}% (₹${_wantsOver.toLocaleString('en-IN')}) → more to invest`
+        verdictType = 'warning'
+      } else if (_savingsGap > 0) {
+        verdictText = `${_savingsGap}% below savings goal — room to grow wealth`
+        verdictType = 'warning'
+      } else {
+        verdictText = 'Well balanced this month ✓'
+        verdictType = 'positive'
+      }
+      result.budget.verdict = { text: verdictText, type: verdictType }
+      result.budget.blueprintHint = verdictText
+    }
+
     setEngineResult(result)
     setLoading(false)
 
@@ -244,25 +338,9 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     // Clear cached AI report so next engine recompute triggers a fresh one
     await AsyncStorage.removeItem(AI_REPORT_KEY)
     forceAiRefreshRef.current = true
-    if (profile) {
-      const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
-      const thisMonthTx = transactions.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
-      const baseIncome = incomeOverride ?? profile?.monthly_income ?? 0
-
-      const result = runEngine({
-        income: baseIncome,
-        transactions: thisMonthTx,
-        allTransactions: transactions,
-        goals,
-        assets: newAssets,
-        age: profile?.age ?? 0,
-        profile,
-      })
-      setEngineResult(result)
-    }
-  }, [profile, transactions, goals, incomeOverride])
+    // Re-fetch everything (will use locked monthly plan from Supabase)
+    await fetchAll()
+  }, [fetchAll])
 
   const value = {
     // Data

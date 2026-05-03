@@ -81,5 +81,5 @@ export function getMonthlySnapshots(transactions, baseIncome) {
       spent: s.spent,
       savedPct: inc > 0 ? Math.round(((inc - s.spent) / inc) * 100) : 0,
     }
-  }).slice(-4)
+  }).slice(-5)
 }

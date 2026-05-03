@@ -316,16 +316,25 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           <Text style={s.cardTitle}>{new Date().toLocaleString('default', { month: 'long' })} Blueprint</Text>
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
         </View>
-        <Text style={{ fontSize: 13, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 6 }}>{budget.rationale}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 6 }}>
-          <Text style={{ fontSize: 13, color: TXT1, fontFamily: 'Manrope_700Bold' }}>
-            Yours {flow.needsPct} · {flow.wantsPct} · {flow.savingsPct}
+        <Text style={{ fontSize: 13, color: TXT2, fontFamily: 'Manrope_400Regular', marginBottom: 4 }}>{budget.strategy}</Text>
+        {budget.categoryPatterns && budget.categoryPatterns.length > 0 && (
+          <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 4 }}>
+            Top spends: {budget.categoryPatterns.map((p: any) => `${p.category} (${p.pctOfIncome}%)`).join(' · ')}
           </Text>
-          <Text style={{ fontSize: 13, color: TXT3 }}>—</Text>
-          <Text style={{ fontSize: 13, color: BLUE, fontFamily: 'Manrope_400Regular' }}>
-            {budget.blueprintHint}
+        )}
+        {budget.compliance !== null && budget.compliance !== undefined && (
+          <Text style={{ fontSize: 12, color: budget.compliance >= 80 ? GREEN_H : budget.compliance >= 50 ? ORANGE_H : RED, fontFamily: 'Manrope_700Bold', marginBottom: 4 }}>
+            Last month compliance: {budget.compliance}%{budget.compliance >= 90 ? ' — excellent!' : budget.compliance >= 70 ? ' — good' : budget.compliance >= 50 ? ' — needs focus' : ' — let\'s improve'}
           </Text>
-        </View>
+        )}
+        {budget.verdict && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 6, backgroundColor: budget.verdict.type === 'positive' ? GREEN + '12' : budget.verdict.type === 'warning' ? ORANGE + '12' : RED + '12', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 }}>
+            <Text style={{ fontSize: 13 }}>{budget.verdict.type === 'positive' ? '✅' : budget.verdict.type === 'warning' ? '⚠️' : '🔴'}</Text>
+            <Text style={{ fontSize: 13, color: budget.verdict.type === 'positive' ? GREEN_H : budget.verdict.type === 'warning' ? ORANGE_H : RED, fontFamily: 'Manrope_700Bold', flex: 1 }}>
+              {budget.verdict.text}
+            </Text>
+          </View>
+        )}
         {[
           { label: 'Essentials', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
           { label: 'Lifestyle', sub: 'Dining, shopping, trips', emoji: '🎯', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
