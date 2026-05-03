@@ -26,7 +26,6 @@ const BLUE    = '#1E3A8A'
 const BLUE_L  = '#DBEAFE'
 const GREEN   = '#22C55E'
 const GREEN_H = '#16A34A'
-const GREEN_L = '#DCFCE7'
 const ORANGE  = '#F59E0B'
 const ORANGE_H = '#D97706'
 const ORANGE_L = '#FEF3C7'
@@ -93,7 +92,7 @@ function autoClassify(desc: string): { cat: string; emoji: string } | null {
 }
 
 export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { onNavigateCoach?: () => void; onNavigatePlan?: () => void }) {
-  const { profile, transactions, goals, assets, engineResult, aiReport, aiReportLoading: reportLoading, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
+  const { profile, transactions, engineResult, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Expense sheet
@@ -117,8 +116,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const userName = profile?.full_name || 'there'
   const userAge = profile?.age ?? 0
 
-  // AI report comes from shared DataContext — no local fetch needed
-
   const onRefresh = async () => {
     setRefreshing(true)
     await refreshData()
@@ -126,12 +123,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   }
 
   const firstName = userName.split(' ')[0]
-  const greeting = () => {
-    const h = new Date().getHours()
-    if (h < 12) return 'Good morning'
-    if (h < 17) return 'Good afternoon'
-    return 'Good evening'
-  }
 
   // ─── Expense CRUD ──────────────────────────────────────────────
   const openAdd = (cat?: string, emoji?: string) => {
@@ -190,7 +181,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
     return <View style={s.center}><ActivityIndicator color={BLUE} size="large" /></View>
   }
 
-  const { flow, status, topProblem, action, insights } = engineResult
+  const { flow, status } = engineResult
   const budget = engineResult.budget
   const savingsTargetPct = budget?.savingsTarget ?? 20
   const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
@@ -270,8 +261,20 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
       <View style={s.heroCard}>
         <View style={s.heroGlow} />
         <View style={s.heroContent}>
-          <Text style={s.heroMonth}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>
-          <Text style={s.heroGreeting}>{greeting()}, {firstName}! 👋</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.heroMonth}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>
+              <Text style={s.heroGreeting}>Hey {firstName} 👋</Text>
+            </View>
+            {/* AI badge — taps to Coach */}
+            <TouchableOpacity
+              onPress={() => onNavigateCoach?.()}
+              activeOpacity={0.7}
+              style={s.heroAiBadge}
+            >
+              <Text style={{ fontSize: 18 }}>✨</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Status badge */}
           <View style={[s.statusBadge, { backgroundColor: status.color + '20' }]}>
@@ -302,130 +305,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
       {/* ── Top Action Card ──────────────────────────────── */}
       <TopActionCard topAction={getTopAction(engineResult, userAge)} onPress={onNavigateCoach} />
-
-      {/* ── Monthly Trend ────────────────────────────────── */}
-      {snapshots.length > 1 && (
-        <View style={s.card}>
-          <Text style={[s.cardTitle, { marginBottom: 14 }]}>Monthly Trend</Text>
-          {snapshots.map((snap, i) => {
-            const isCurrent = i === snapshots.length - 1
-            const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
-            return (
-              <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
-                <View style={s.trendMonthCol}>
-                  <Text style={[s.trendMonth, isCurrent && { color: BLUE }]}>{snap.short}</Text>
-                </View>
-                <View style={s.trendContent}>
-                  <View style={s.trendBarTrack}>
-                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= savingsTargetPct ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
-                  </View>
-                  <View style={s.trendStats}>
-                    <Text style={s.trendStatText}>
-                      <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
-                      <Text style={{ color: TXT3 }}> spent</Text>
-                    </Text>
-                    <Text style={[s.trendSaved, { color: snap.savedPct >= savingsTargetPct ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
-                      {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )
-          })}
-          {(() => {
-            const curr = snapshots[snapshots.length - 1]
-            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null
-            if (!prev) return null
-            const diff = curr.savedPct - prev.savedPct
-            const msg = diff > 5
-              ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
-              : diff < -5
-              ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
-              : `Holding steady vs ${prev.short} — aim for ${savingsTargetPct}%+ savings 🔵`
-            return (
-              <View style={s.trendInsight}>
-                <Text style={s.trendInsightText}>{msg}</Text>
-              </View>
-            )
-          })()}
-        </View>
-      )}
-
-      {/* ── AI Financial Report (compact dashboard) ──── */}
-      {(reportLoading || aiReport || engineResult) && (
-        <TouchableOpacity
-          style={s.reportCard}
-          onPress={() => onNavigateCoach?.()}
-          activeOpacity={0.85}
-        >
-          <View style={s.reportHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-              <Text style={{ fontSize: 16 }}>🤖</Text>
-              <Text style={s.cardTitle}>AI Financial Report</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => refreshData()}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.6}
-              style={{ padding: 4 }}
-            >
-              <Text style={{ fontSize: 16 }}>{reportLoading ? '⏳' : '🔄'}</Text>
-            </TouchableOpacity>
-            {(aiReport || engineResult) && (
-              <View style={[s.reportScoreBadge, {
-                backgroundColor: ((aiReport?.score ?? engineResult?.score ?? 50) >= 80 ? GREEN : (aiReport?.score ?? engineResult?.score ?? 50) >= 60 ? ORANGE : (aiReport?.score ?? engineResult?.score ?? 50) >= 40 ? ORANGE : RED) + '18'
-              }]}>
-                <Text style={[s.reportScoreText, {
-                  color: (aiReport?.score ?? engineResult?.score ?? 50) >= 80 ? GREEN_H : (aiReport?.score ?? engineResult?.score ?? 50) >= 60 ? ORANGE_H : (aiReport?.score ?? engineResult?.score ?? 50) >= 40 ? ORANGE_H : RED
-                }]}>{aiReport?.score ?? engineResult?.score ?? '—'}/100</Text>
-              </View>
-            )}
-          </View>
-
-          {aiReport ? (
-            <>
-              <Text style={s.reportSummary}>{aiReport.summary}</Text>
-
-              {/* Section pills - compact overview */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                {aiReport.sections?.map((sec: any, i: number) => (
-                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BG_SEC, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-                    <Text style={{ fontSize: 13 }}>{sec.icon}</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' }}>{sec.title}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>View Full Report</Text>
-                <Text style={{ fontSize: 14, color: BLUE }}>→</Text>
-              </View>
-            </>
-          ) : engineResult ? (
-            <>
-              <Text style={s.reportSummary}>
-                {engineResult.flow?.savingsPct >= savingsTargetPct
-                  ? `Saving ${engineResult.flow.savingsPct}% of income — above the ${savingsTargetPct}% target.`
-                  : engineResult.flow?.income > 0
-                    ? `Saving ${engineResult.flow?.savingsPct ?? 0}% — target is ${savingsTargetPct}%. ${engineResult.emergencyMonths < 3 ? 'Emergency fund needs attention.' : ''}`
-                    : 'Add income and expenses to see your analysis.'}
-              </Text>
-
-              {reportLoading && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: BLUE_L, borderRadius: 10, marginBottom: 8 }}>
-                  <ActivityIndicator color={BLUE} size="small" />
-                  <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: BLUE, flex: 1 }}>Getting detailed AI analysis...</Text>
-                </View>
-              )}
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderTopWidth: 1, borderTopColor: BG_SEC }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' }}>View Full Report</Text>
-                <Text style={{ fontSize: 14, color: BLUE }}>→</Text>
-              </View>
-            </>
-          ) : null}
-        </TouchableOpacity>
-      )}
 
       {/* ── Blueprint (compact) ──────────────────────────── */}
       <View style={s.card}>
@@ -589,6 +468,56 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
         )}
       </View>
 
+      {/* ── Monthly Trend ────────────────────────────────── */}
+      {snapshots.length > 1 && (
+        <View style={s.card}>
+          <Text style={[s.cardTitle, { marginBottom: 14 }]}>Monthly Trend</Text>
+          {snapshots.map((snap, i) => {
+            const isCurrent = i === snapshots.length - 1
+            const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
+            return (
+              <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
+                <View style={s.trendMonthCol}>
+                  <Text style={[s.trendMonth, isCurrent && { color: BLUE }]}>{snap.short}</Text>
+                </View>
+                <View style={s.trendContent}>
+                  <View style={s.trendBarTrack}>
+                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= savingsTargetPct ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
+                  </View>
+                  <View style={s.trendStats}>
+                    <Text style={s.trendStatText}>
+                      <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
+                      <Text style={{ color: TXT3 }}> spent</Text>
+                    </Text>
+                    <Text style={[s.trendSaved, { color: snap.savedPct >= savingsTargetPct ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
+                      {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )
+          })}
+          {(() => {
+            const curr = snapshots[snapshots.length - 1]
+            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null
+            if (!prev) return null
+            const diff = curr.savedPct - prev.savedPct
+            const msg = diff > 5
+              ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
+              : diff < -5
+              ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
+              : `Holding steady vs ${prev.short} — aim for ${savingsTargetPct}%+ savings 🔵`
+            return (
+              <View style={s.trendInsight}>
+                <Text style={s.trendInsightText}>{msg}</Text>
+              </View>
+            )
+          })()}
+        </View>
+      )}
+
+
+
       <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -725,6 +654,7 @@ const s = StyleSheet.create({
   heroContent: { position: 'relative', zIndex: 1 },
   heroMonth: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
   heroGreeting: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 30, marginTop: 2, fontFamily: 'Manrope_700Bold' },
+  heroAiBadge: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, minWidth: 40 },
 
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12 },
   statusText: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
@@ -734,26 +664,6 @@ const s = StyleSheet.create({
   flowBox: { flex: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.1)' },
   flowLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
   flowValue: { fontSize: 17, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
-
-  // Problem card
-  problemCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: ORANGE + '30', borderLeftWidth: 4, borderLeftColor: ORANGE },
-  problemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  problemTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold', flex: 1 },
-  problemMessage: { fontSize: 15, color: TXT2, lineHeight: 22, fontFamily: 'Manrope_400Regular', marginBottom: 14 },
-  ctaBtn: { backgroundColor: BLUE, borderRadius: 14, paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  ctaBtnText: { fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
-  ctaArrow: { fontSize: 16, color: '#fff', fontWeight: '800' },
-
-  // AI Report
-  reportCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BLUE + '25', borderLeftWidth: 4, borderLeftColor: BLUE },
-  reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  reportScoreBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  reportScoreText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
-  reportSummary: { fontSize: 15, color: TXT1, lineHeight: 22, fontFamily: 'Manrope_400Regular', marginBottom: 12 },
-
-  // Insight chips
-  insightChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: BORDER, maxWidth: 260 },
-  insightChipText: { fontSize: 13, fontWeight: '600', color: TXT1, fontFamily: 'Manrope_700Bold', lineHeight: 19, flexShrink: 1 },
 
   // Card
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
@@ -768,15 +678,6 @@ const s = StyleSheet.create({
   bpPillText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative', marginBottom: 2 },
   barFill: { position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3 },
-  barMarker: { position: 'absolute', top: -5, alignItems: 'center' },
-  barMarkerLine: { width: 2, height: 16, backgroundColor: TXT1, borderRadius: 1 },
-  barMarkerLabel: { fontSize: 11, fontWeight: '800', color: TXT2, fontFamily: 'Manrope_700Bold', marginTop: 1 },
-
-  // Category chips
-  catChip: { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1 },
-  catAmount: { fontSize: 16, fontWeight: '800', marginTop: 4, fontFamily: 'Manrope_700Bold' },
-  catLabel: { fontSize: 12, fontWeight: '700', color: TXT3, marginTop: 2, textTransform: 'uppercase', fontFamily: 'Manrope_700Bold' },
-
   // Transactions
   txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, marginBottom: 8, backgroundColor: BG_SEC, borderRadius: 14 },
   txLeft: { flex: 1 },

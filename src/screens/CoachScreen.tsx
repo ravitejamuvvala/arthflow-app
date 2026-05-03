@@ -321,9 +321,19 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
           <ArthFlowLogo size={28} />
           <Text style={s.brandText}>ARTHFLOW</Text>
         </View>
-        <TouchableOpacity style={s.badge} activeOpacity={0.7} onPress={() => mainScroll.current?.scrollToEnd({ animated: true })}>
-          <Text style={s.badgeTxt}>✨ AI Coach</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={onRefresh}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ padding: 4 }}
+          >
+            <Text style={{ fontSize: 16 }}>{refreshing || reportLoading ? '⏳' : '🔄'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.badge} activeOpacity={0.7} onPress={() => mainScroll.current?.scrollToEnd({ animated: true })}>
+            <Text style={s.badgeTxt}>✨ AI Coach</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView

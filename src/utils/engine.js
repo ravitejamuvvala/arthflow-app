@@ -5,28 +5,63 @@ import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots } f
 import { generateInsights } from './insights'
 
 // ─── Unified Score (0-100) ──────────────────────────────────────────────
-function calculateScore(flow, emergencyMonths, goalCalcs) {
+// Comprehensive score using adaptive budget + insurance + debt + trend + diversification
+function calculateScore({ flow, emergencyMonths, goalCalcs, budget, debtHealth, risk, trend, assetAnalysis, lifestyleCreep }) {
   if (!flow) return 50
-  let score = 25
 
   const savingsPct = flow.savingsPct ?? 0
-  if (savingsPct >= 30) score += 25
-  else if (savingsPct >= 20) score += 20
-  else if (savingsPct >= 10) score += 10
+  const savingsTarget = budget?.savingsTarget ?? 20
+  const needsTarget = budget?.needsTarget ?? 50
+  const wantsTarget = budget?.wantsTarget ?? 30
+
+  let score = 0
+
+  // 1. Savings vs adaptive target (25 pts)
+  const savingsRatio = savingsTarget > 0 ? savingsPct / savingsTarget : 0
+  if (savingsRatio >= 1) score += 25
+  else if (savingsRatio >= 0.8) score += 20
+  else if (savingsRatio >= 0.5) score += 12
   else if (savingsPct > 0) score += 5
 
+  // 2. Emergency fund (20 pts)
   if (emergencyMonths >= 6) score += 20
-  else if (emergencyMonths >= 3) score += 10
+  else if (emergencyMonths >= 3) score += 12
   else if (emergencyMonths > 0) score += 5
 
-  if (flow.needsPct <= 50) score += 10
-  if (flow.wantsPct <= 30) score += 5
+  // 3. Needs vs adaptive target (10 pts)
+  if (flow.needsPct <= needsTarget) score += 10
+  else if (flow.needsPct <= needsTarget + 10) score += 5
 
+  // 4. Wants vs adaptive target (5 pts)
+  if (flow.wantsPct <= wantsTarget) score += 5
+  else if (flow.wantsPct <= wantsTarget + 10) score += 2
+
+  // 5. Goal funding (10 pts)
   const avgFunded = goalCalcs?.length > 0
     ? goalCalcs.reduce((s, g) => s + g.funded, 0) / goalCalcs.length
     : 0
   if (avgFunded >= 0.5) score += 10
   else if (avgFunded > 0) score += 5
+
+  // 6. Insurance coverage (10 pts)
+  const hasTermIns = risk?.hasTermInsurance ?? false
+  const hasHealthIns = risk?.hasHealthInsurance ?? false
+  if (hasTermIns && hasHealthIns) score += 10
+  else if (hasTermIns || hasHealthIns) score += 5
+
+  // 7. Debt health (10 pts)
+  const dti = debtHealth?.dtiRatio ?? 0
+  if (dti === 0) score += 10
+  else if (dti <= 30) score += 8
+  else if (dti <= 40) score += 4
+
+  // 8. Savings trend (5 pts)
+  if (trend?.savingsTrend === 'improving') score += 5
+  else if (trend?.savingsTrend === 'stable') score += 3
+
+  // 9. Asset diversification (5 pts)
+  if (assetAnalysis?.diversified) score += 5
+  else if ((assetAnalysis?.assetCount ?? 0) >= 2) score += 2
 
   return Math.min(100, score)
 }
@@ -314,10 +349,7 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
   const goalCalcs = configuredGoals.map(g => calculateMonthlyRequired(g))
   const avgGoalFunded = goalCalcs.length > 0 ? goalCalcs.reduce((s, c) => s + c.funded, 0) / goalCalcs.length : 0
 
-  // Unified score (0-100) — single source of truth
-  const score = calculateScore(flow, emergencyMonths, goalCalcs)
-  const scoreLabel = getScoreLabel(score)
-  const statusFromScore = getStatusFromScore(score)
+  // Score computed AFTER all sub-computations (see below)
 
   // Insights — deferred until after budget is computed (see below)
 
@@ -407,7 +439,7 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     healthCoverAmount: Number(assets?.healthCoverAmount) || 0,
     // Legacy — true if either insurance is present
     hasInsurance: !!(assets?.hasTermInsurance || assets?.hasHealthInsurance || assets?.hasInsurance),
-    riskLevel: emergencyMonths >= 6 && score >= 60 ? 'low' : emergencyMonths >= 3 ? 'medium' : 'high',
+    riskLevel: emergencyMonths >= 6 ? 'low' : emergencyMonths >= 3 ? 'medium' : 'high',
   }
 
   // ─── Trend analysis (last 3 months) ───────────────────────
@@ -500,11 +532,40 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
   const topProblem = topInsights[0]?.type !== 'positive' ? topInsights[0]?.title : null
   const action = topInsights[0]?.action || null
 
+  // ─── Unified Score (0-100) — computed after all signals ───
+  const score = calculateScore({ flow, emergencyMonths, goalCalcs, budget, debtHealth, risk, trend, assetAnalysis, lifestyleCreep })
+  const scoreLabel = getScoreLabel(score)
+  const statusFromScore = getStatusFromScore(score)
+
+  // ─── Status message — general health summary (not top problem) ─
+  const savingsTarget = budget?.savingsTarget ?? 20
+  const savingsPct = flow.savingsPct ?? 0
+  let statusMessage
+  if (!flow.income || flow.income === 0) {
+    statusMessage = 'Add income to see your financial health.'
+  } else if (score >= 80) {
+    statusMessage = `Saving ${savingsPct}% — above ${savingsTarget}% target. Great job!`
+  } else if (score >= 60) {
+    const parts = []
+    if (savingsPct >= savingsTarget) parts.push(`Saving ${savingsPct}% ✓`)
+    else parts.push(`Saving ${savingsPct}% — target ${savingsTarget}%`)
+    if (!risk?.hasTermInsurance || !risk?.hasHealthInsurance) parts.push('insurance gaps')
+    statusMessage = parts.join(', ')
+  } else if (score >= 40) {
+    const gaps = []
+    if (savingsPct < savingsTarget) gaps.push(`savings at ${savingsPct}% vs ${savingsTarget}%`)
+    if (emergencyMonths < 3) gaps.push('low emergency cover')
+    if (debtHealth?.dtiRatio > 40) gaps.push('high debt load')
+    statusMessage = gaps.length > 0 ? `Focus areas: ${gaps.join(', ')}` : 'A few tweaks will get you on track.'
+  } else {
+    statusMessage = 'Multiple areas need attention — start with the top action below.'
+  }
+
   return {
     flow,
     score,
     scoreLabel,
-    status: { ...statusFromScore, message: topProblem || (score >= 70 ? 'Looking good — keep it up!' : 'A few tweaks will get you on track.') },
+    status: { ...statusFromScore, message: statusMessage },
     topProblem,
     action,
     insights: topInsights,
