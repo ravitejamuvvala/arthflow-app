@@ -252,6 +252,9 @@ export default function GoalsScreen() {
         {goals.length > 0 && totalTarget > 0 && (
           <View style={styles.heroCard}>
             <View style={styles.heroGlow} />
+            <View style={styles.heroWatermark} pointerEvents="none">
+              <ArthFlowLogo size={120} />
+            </View>
             <View style={styles.heroContent}>
               <Text style={styles.heroLabel}>{configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''} PLANNED</Text>
               <Text style={styles.heroAmount}>{fmtInr(totalTarget)}</Text>
@@ -723,6 +726,7 @@ const styles = StyleSheet.create({
   // Hero
   heroCard: { borderRadius: 20, padding: 16, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 40, elevation: 12 },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
+  heroWatermark: { position: 'absolute', right: -10, bottom: -10, opacity: 0.04, zIndex: 0 },
   heroContent: { position: 'relative', zIndex: 1 },
   heroLabel: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Manrope_700Bold' },
   heroAmount: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2, fontFamily: 'Manrope_700Bold' },

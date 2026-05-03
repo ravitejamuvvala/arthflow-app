@@ -260,6 +260,9 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
       {/* ── Status Hero ──────────────────────────────────── */}
       <View style={s.heroCard}>
         <View style={s.heroGlow} />
+        <View style={s.heroWatermark} pointerEvents="none">
+          <ArthFlowLogo size={120} />
+        </View>
         <View style={s.heroContent}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
@@ -651,6 +654,7 @@ const s = StyleSheet.create({
   // Hero
   heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
+  heroWatermark: { position: 'absolute', right: -10, bottom: -10, opacity: 0.04, zIndex: 0 },
   heroContent: { position: 'relative', zIndex: 1 },
   heroMonth: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
   heroGreeting: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 30, marginTop: 2, fontFamily: 'Manrope_700Bold' },

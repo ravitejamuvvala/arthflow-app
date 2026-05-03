@@ -346,6 +346,9 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
         {/* ══ 1. FINANCIAL HEALTH SCORE ══════════════════════ */}
         <View style={s.heroCard}>
           <View style={s.heroGlow} />
+          <View style={s.heroWatermark} pointerEvents="none">
+            <ArthFlowLogo size={120} />
+          </View>
           <View style={s.heroContent}>
             <Text style={s.heroMonth}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>
             <Text style={s.greeting}>{greeting()}</Text>
@@ -929,6 +932,7 @@ const s = StyleSheet.create({
   // Hero / Score card
   heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 18, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
+  heroWatermark: { position: 'absolute', right: -10, bottom: -10, opacity: 0.04, zIndex: 0 },
   heroContent: { position: 'relative', zIndex: 1 },
   heroMonth: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: 'Manrope_700Bold', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   greeting: { fontSize: 20, fontFamily: 'Manrope_700Bold', color: '#fff', marginBottom: 14 },

@@ -274,8 +274,7 @@ export default function ProfileScreen() {
 
       {/* ─── Hero Profile Card ─── */}
       <View style={st.heroCard}>
-        <View style={st.heroBlob1} />
-        <View style={st.heroBlob2} />
+        <View style={st.heroGlow} />
         <View style={st.heroWatermark} pointerEvents="none">
           <ArthFlowLogo size={120} />
         </View>
@@ -889,9 +888,8 @@ const st = StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
 
-  heroCard: { borderRadius: 24, padding: 24, marginBottom: 20, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A', shadowColor: BLUE, shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.38, shadowRadius: 60, elevation: 12 },
-  heroBlob1: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(30,58,138,0.55)' },
-  heroBlob2: { position: 'absolute', bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(200,134,10,0.12)' },
+  heroCard: { borderRadius: 24, padding: 24, marginBottom: 20, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
+  heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroWatermark: { position: 'absolute', right: -10, bottom: -10, opacity: 0.04, zIndex: 0 },
   heroContent: { position: 'relative', zIndex: 1 },
   heroUserRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 20, marginBottom: 20 },
