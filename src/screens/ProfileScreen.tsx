@@ -418,7 +418,7 @@ export default function ProfileScreen() {
               onValueChange={(val) => {
                 const next = { ...assets, hasTermInsurance: val, termCoverAmount: val ? assets.termCoverAmount : 0 }
                 setAssets(next)
-                updateAssets(next)
+                queueMicrotask(() => updateAssets(next))
               }}
               trackColor={{ false: '#E2E8F0', true: GREEN }}
               thumbColor="#fff"
@@ -459,7 +459,7 @@ export default function ProfileScreen() {
               onValueChange={(val) => {
                 const next = { ...assets, hasHealthInsurance: val, healthCoverAmount: val ? assets.healthCoverAmount : 0 }
                 setAssets(next)
-                updateAssets(next)
+                queueMicrotask(() => updateAssets(next))
               }}
               trackColor={{ false: '#E2E8F0', true: GREEN }}
               thumbColor="#fff"

@@ -101,7 +101,7 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
   const savingsTarget = Math.round(income * savingsTargetPct / 100)
   const savingsGap = savingsTarget - saved
   const emergencyTarget = risk?.emergencyTarget ?? totalExp * 6
-  const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.flow?.income ?? 0))
+  const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.assetAnalysis?.liquidCash ?? 0))
   const yearsToRetirement = Math.max(1, 60 - (age || 25))
   const termCover = risk?.termInsuranceNeeded ?? Math.max(0, monthlyIncome * 12 * yearsToRetirement - (engineResult?.assetAnalysis?.netWorth ?? 0))
   const eqPct = investment?.equityPct ?? Math.min(80, 100 - age)
