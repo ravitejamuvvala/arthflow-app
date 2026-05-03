@@ -60,7 +60,7 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     ])
 
     const p = profileRes.data ?? null
-    const txs = txRes.data ?? []
+    let txs: Transaction[] = txRes.data ?? []
     const g = goalRes.data ?? []
 
     // Load assets from AsyncStorage
@@ -70,21 +70,45 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
       if (raw) assetData = JSON.parse(raw)
     } catch {}
 
+    // ── Auto-seed: convert onboarding estimates into real transactions ──
+    // Runs once per month when there are zero transactions and the profile
+    // has onboarding expense data. Creates actual expense records so the
+    // engine always operates on real transactions (no fallback path).
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
+    const thisMonthTx = txs.filter(t => new Date(t.date) >= startOfMonth)
+    const thisMonthExpenses = thisMonthTx.filter(t => t.type === 'expense')
+
+    if (p && thisMonthExpenses.length === 0 && (p.expenses_essentials || p.expenses_lifestyle || p.expenses_emis)) {
+      const seedKey = `@arthflow_seeded_${startOfMonth.toISOString().slice(0, 7)}`
+      const alreadySeeded = await AsyncStorage.getItem(seedKey)
+      if (!alreadySeeded) {
+        const seedDate = new Date().toISOString()
+        const seeds: { user_id: string; amount: number; category: string; type: 'expense'; note: string; date: string }[] = []
+        if (p.expenses_essentials > 0) seeds.push({ user_id: user.id, amount: p.expenses_essentials, category: 'Essentials', type: 'expense', note: 'Rent & Bills', date: seedDate })
+        if (p.expenses_emis > 0) seeds.push({ user_id: user.id, amount: p.expenses_emis, category: 'EMIs', type: 'expense', note: 'Loan EMIs', date: seedDate })
+        if (p.expenses_lifestyle > 0) seeds.push({ user_id: user.id, amount: p.expenses_lifestyle, category: 'Lifestyle', type: 'expense', note: 'Lifestyle', date: seedDate })
+        if (seeds.length > 0) {
+          const { data: inserted } = await supabase.from('transactions').insert(seeds).select()
+          if (inserted) txs = [...inserted, ...txs]
+          await AsyncStorage.setItem(seedKey, 'true')
+        }
+      }
+    }
+
     setProfile(p)
     setTransactions(txs)
     setGoals(g)
     setAssets(assetData)
 
     // Run engine with current-month transactions
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-    const thisMonthTx = txs.filter(t => new Date(t.date) >= startOfMonth)
+    const thisMonthTxFinal = txs.filter(t => new Date(t.date) >= startOfMonth)
     const baseIncome = incomeOverride ?? p?.monthly_income ?? 0
 
     const result = runEngine({
       income: baseIncome,
-      transactions: thisMonthTx,
+      transactions: thisMonthTxFinal,
       goals: g,
       assets: assetData,
       age: p?.age ?? 0,

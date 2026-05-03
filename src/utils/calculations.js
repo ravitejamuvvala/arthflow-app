@@ -36,30 +36,20 @@ export function stripCommas(str) {
 export function getMoneyFlow(transactions, baseIncome, profile) {
   const income = baseIncome || transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const expenses = transactions.filter(t => t.type === 'expense')
-  const totalSpentFromTx = expenses.reduce((s, t) => s + t.amount, 0)
+  const totalSpent = expenses.reduce((s, t) => s + t.amount, 0)
 
-  // If no transactions this month, fall back to onboarding budget as baseline
-  const useProfileFallback = totalSpentFromTx === 0 && profile
   const catTotals = { essentials: 0, lifestyle: 0, emis: 0, other: 0 }
+  expenses.forEach(t => {
+    catTotals[mapCategory(t.category || 'other')] += t.amount
+  })
 
-  if (useProfileFallback) {
-    catTotals.essentials = profile.expenses_essentials || 0
-    catTotals.lifestyle  = profile.expenses_lifestyle || 0
-    catTotals.emis       = profile.expenses_emis || 0
-  } else {
-    expenses.forEach(t => {
-      catTotals[mapCategory(t.category || 'other')] += t.amount
-    })
-  }
-
-  const totalSpent = useProfileFallback ? (catTotals.essentials + catTotals.lifestyle + catTotals.emis) : totalSpentFromTx
   const savings = income - totalSpent
   const savingsPct = income > 0 ? Math.round((savings / income) * 100) : 0
 
   const needsPct = income > 0 ? Math.round(((catTotals.essentials + catTotals.emis) / income) * 100) : 0
   const wantsPct = income > 0 ? Math.round((catTotals.lifestyle / income) * 100) : 0
 
-  return { income, totalSpent, savings, savingsPct, catTotals, needsPct, wantsPct, isEstimated: useProfileFallback }
+  return { income, totalSpent, savings, savingsPct, catTotals, needsPct, wantsPct }
 }
 
 export function calculateMonthlyRequired(goal) {

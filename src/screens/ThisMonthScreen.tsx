@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useState } from 'react'
 import {
   ActivityIndicator,
@@ -18,7 +17,7 @@ import TopActionCard from '../components/TopActionCard'
 import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { Transaction } from '../types'
-import { commaFormat, fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory, stripCommas } from '../utils/calculations'
+import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
 import { getTopAction } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
@@ -113,11 +112,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const [showIncomeSheet, setShowIncomeSheet] = useState(false)
   const [incomeInput, setIncomeInput] = useState('')
 
-  // Onboarding expense edit
-  const [showOnbExpSheet, setShowOnbExpSheet] = useState(false)
-  const [onbExpKey, setOnbExpKey] = useState<string>('')
-  const [onbExpLabel, setOnbExpLabel] = useState('')
-  const [onbExpAmount, setOnbExpAmount] = useState('')
+  // Carry-forward selection
   const [carryItems, setCarryItems] = useState<Set<string>>(new Set())
 
   // Derived values from shared context
@@ -428,17 +423,14 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           <Text style={s.cardTitle}>Money Blueprint</Text>
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
         </View>
-        {flow.isEstimated && (
-          <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginBottom: 10 }}>Based on your onboarding budget — add expenses for actuals</Text>
-        )}
         {[
-          { label: 'Bills & Needs', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
-          { label: 'Fun & Wants', sub: 'Dining, shopping, trips', emoji: '🎯', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
-          { label: 'Savings', sub: 'What you keep & grow', emoji: '💰', actual: flow.savingsPct, target: budget.savingsTarget, amount: Math.max(0, flow.savings), good: flow.savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
+          { label: 'Essentials', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
+          { label: 'Lifestyle', sub: 'Dining, shopping, trips', emoji: '🎯', actual: flow.wantsPct, target: budget.wantsTarget, amount: flow.catTotals.lifestyle, good: flow.wantsPct <= budget.wantsTarget, okColor: ORANGE_H, badColor: RED },
+          { label: 'Wealth', sub: 'What you keep & grow', emoji: '💰', actual: flow.savingsPct, target: budget.savingsTarget, amount: Math.max(0, flow.savings), good: flow.savingsPct >= budget.savingsTarget, okColor: GREEN_H, badColor: ORANGE_H },
         ].map(row => {
           const barColor = row.good ? row.okColor : row.badColor
           const budgetAmount = Math.round(flow.income * row.target / 100)
-          const isWealth = row.label === 'Savings'
+          const isWealth = row.label === 'Wealth'
           const overUnder = isWealth
             ? (row.amount >= budgetAmount ? `${fmtInr(row.amount - budgetAmount)} above` : `${fmtInr(budgetAmount - row.amount)} below`)
             : (row.amount <= budgetAmount ? `${fmtInr(budgetAmount - row.amount)} left` : `${fmtInr(row.amount - budgetAmount)} over`)
@@ -483,41 +475,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
             <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 12, color: BLUE }}>+ Add</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Onboarding estimates — break it down into detailed items */}
-        {flow.isEstimated && (profile?.expenses_essentials || profile?.expenses_lifestyle || profile?.expenses_emis) && (
-          <View style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 8, lineHeight: 18 }}>
-              Your onboarding estimates — tap to add detailed items
-            </Text>
-            {[
-              { key: 'needs', cat: 'essentials', emoji: '🏠', label: 'Bills & Needs', amount: (profile?.expenses_essentials ?? 0) + (profile?.expenses_emis ?? 0), color: BLUE, bg: BLUE_L, editKeys: [
-                { key: 'expenses_essentials', label: 'Essentials', amount: profile?.expenses_essentials ?? 0 },
-                { key: 'expenses_emis', label: 'EMIs', amount: profile?.expenses_emis ?? 0 },
-              ] },
-              { key: 'wants', cat: 'lifestyle', emoji: '✨', label: 'Fun & Wants', amount: profile?.expenses_lifestyle ?? 0, color: ORANGE, bg: ORANGE_L, editKeys: [
-                { key: 'expenses_lifestyle', label: 'Lifestyle', amount: profile?.expenses_lifestyle ?? 0 },
-              ] },
-            ].filter(e => e.amount > 0).map(e => (
-              <TouchableOpacity key={e.key} style={s.txRow} onPress={() => openAdd(e.cat, e.emoji)} activeOpacity={0.6}>
-                <View style={s.txLeft}>
-                  <Text style={s.txNote}>{e.emoji} {e.label}</Text>
-                  <Text style={s.txDate}>₹{commaFormat(String(e.amount))} estimated</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: e.color, fontFamily: 'Manrope_700Bold' }}>Add details →</Text>
-                  {e.editKeys.filter(ek => ek.amount > 0).map(ek => (
-                    <TouchableOpacity key={ek.key} onPress={() => { setOnbExpKey(ek.key); setOnbExpLabel(ek.label); setOnbExpAmount(commaFormat(String(ek.amount))); setShowOnbExpSheet(true) }} activeOpacity={0.5} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 12 }}>✏️</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
 
         {/* Carry forward from last month */}
         {thisMonthExpenses.length === 0 && uniquePrevExpenses.length > 0 && (
@@ -701,39 +658,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
                 <Text style={[s.saveBtnText, !(Number(incomeInput) > 0) && { color: TXT3 }]}>Update</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── Onboarding Expense Edit Sheet ─────────────── */}
-      <Modal visible={showOnbExpSheet} transparent animationType="slide" onRequestClose={() => setShowOnbExpSheet(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <TouchableOpacity style={s.sheetOverlay} activeOpacity={1} onPress={() => setShowOnbExpSheet(false)}>
-          <View style={s.sheetContainer} onStartShouldSetResponder={() => true}>
-            <View style={s.sheetHandle} />
-            <Text style={s.sheetTitle}>Edit {onbExpLabel}</Text>
-            <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 12, color: TXT3, marginTop: 4, marginBottom: 16, lineHeight: 18 }}>
-              Update your estimated monthly {onbExpLabel.toLowerCase()} for this month.
-            </Text>
-            <View style={s.amountRow}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: TXT3 }}>₹</Text>
-              <TextInput value={onbExpAmount} onChangeText={t => setOnbExpAmount(commaFormat(t))} placeholder="0" placeholderTextColor={TXT3} keyboardType="numeric" style={s.amountInput} autoFocus />
-            </View>
-            <TouchableOpacity
-              style={[s.saveBtn, { marginTop: 12 }]}
-              onPress={async () => {
-                const { data: { user } } = await supabase.auth.getUser()
-                if (!user || !onbExpKey) return
-                const val = Number(stripCommas(onbExpAmount))
-                if (isNaN(val) || val < 0) return
-                await supabase.from('profiles').update({ [onbExpKey]: val }).eq('id', user.id)
-                await AsyncStorage.removeItem('@arthflow_ai_report')
-                setShowOnbExpSheet(false)
-                refreshData()
-              }}>
-              <Text style={s.saveBtnText}>Save</Text>
-            </TouchableOpacity>
           </View>
         </TouchableOpacity>
         </KeyboardAvoidingView>
