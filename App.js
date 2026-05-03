@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
+import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
 import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
 
@@ -112,34 +112,40 @@ export default function App() {
 
   if (!fontsLoaded || authLoading) {
     return (
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <View style={styles.splash}>
         <ArthFlowLogo size={80} />
         <Text style={styles.splashLogo}>ARTHFLOW</Text>
         <ActivityIndicator color="#1E3A8A" style={{ marginTop: 16 }} />
       </View>
+      </SafeAreaProvider>
     )
   }
 
   if (!session) {
-    return <LoginScreen />
+    return <SafeAreaProvider initialMetrics={initialWindowMetrics}><LoginScreen /></SafeAreaProvider>
   }
 
   if (isOnboarded === null) {
     return (
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <View style={styles.splash}>
         <ArthFlowLogo size={80} />
         <Text style={styles.splashLogo}>ARTHFLOW</Text>
         <ActivityIndicator color="#1E3A8A" style={{ marginTop: 16 }} />
       </View>
+      </SafeAreaProvider>
     )
   }
 
   if (isOnboarded === false) {
     return (
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <OnboardingScreen onComplete={() => { clearLocalData(); setActiveTab('home'); setIsOnboarded(true) }} />
       </SafeAreaView>
+      </SafeAreaProvider>
     )
   }
 
@@ -147,6 +153,7 @@ export default function App() {
   const darkBar = activeTab === 'coach'
 
   return (
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
     <DataProvider key={session?.user?.id ?? 'none'} session={session}>
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle={darkBar ? 'dark-content' : 'light-content'} translucent backgroundColor="transparent" />
@@ -182,6 +189,7 @@ export default function App() {
       </View>
     </SafeAreaView>
     </DataProvider>
+    </SafeAreaProvider>
   )
 }
 
