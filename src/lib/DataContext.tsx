@@ -70,31 +70,23 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
       if (raw) assetData = JSON.parse(raw)
     } catch {}
 
-    // ── Auto-seed: convert onboarding estimates into real transactions ──
-    // Runs once per month when there are zero transactions and the profile
-    // has onboarding expense data. Creates actual expense records so the
-    // engine always operates on real transactions (no fallback path).
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-    const thisMonthTx = txs.filter(t => new Date(t.date) >= startOfMonth)
-    const thisMonthExpenses = thisMonthTx.filter(t => t.type === 'expense')
-
-    if (p && thisMonthExpenses.length === 0 && (p.expenses_essentials || p.expenses_lifestyle || p.expenses_emis)) {
-      const seedKey = `@arthflow_seeded_${startOfMonth.toISOString().slice(0, 7)}`
-      const alreadySeeded = await AsyncStorage.getItem(seedKey)
-      if (!alreadySeeded) {
-        const seedDate = new Date().toISOString()
-        const seeds: { user_id: string; amount: number; category: string; type: 'expense'; note: string; date: string }[] = []
-        if (p.expenses_essentials > 0) seeds.push({ user_id: user.id, amount: p.expenses_essentials, category: 'Essentials', type: 'expense', note: 'Rent & Bills', date: seedDate })
-        if (p.expenses_emis > 0) seeds.push({ user_id: user.id, amount: p.expenses_emis, category: 'EMIs', type: 'expense', note: 'Loan EMIs', date: seedDate })
-        if (p.expenses_lifestyle > 0) seeds.push({ user_id: user.id, amount: p.expenses_lifestyle, category: 'Lifestyle', type: 'expense', note: 'Lifestyle', date: seedDate })
-        if (seeds.length > 0) {
-          const { data: inserted } = await supabase.from('transactions').insert(seeds).select()
-          if (inserted) txs = [...inserted, ...txs]
-          await AsyncStorage.setItem(seedKey, 'true')
-        }
+    // ── One-time cleanup: remove previously auto-seeded DB records ──
+    // Earlier code wrote onboarding estimates as real DB rows. Remove them
+    // so they don't double-count with user's actual transactions.
+    const SEED_CLEANUP_KEY = '@arthflow_seed_cleanup_done'
+    const cleanupDone = await AsyncStorage.getItem(SEED_CLEANUP_KEY)
+    if (!cleanupDone && user) {
+      const seedNotes = ['Rent & Bills', 'Loan EMIs', 'Lifestyle']
+      const { data: staleSeeds } = await supabase
+        .from('transactions')
+        .select('id, note')
+        .eq('user_id', user.id)
+        .in('note', seedNotes)
+      if (staleSeeds && staleSeeds.length > 0) {
+        await supabase.from('transactions').delete().in('id', staleSeeds.map(s => s.id))
+        txs = txs.filter(t => !seedNotes.includes(t.note ?? ''))
       }
+      await AsyncStorage.setItem(SEED_CLEANUP_KEY, 'true')
     }
 
     setProfile(p)
@@ -102,13 +94,17 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     setGoals(g)
     setAssets(assetData)
 
-    // Run engine with current-month transactions
+    // Run engine with current-month transactions — single source of truth
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
     const thisMonthTxFinal = txs.filter(t => new Date(t.date) >= startOfMonth)
     const baseIncome = incomeOverride ?? p?.monthly_income ?? 0
 
     const result = runEngine({
       income: baseIncome,
       transactions: thisMonthTxFinal,
+      allTransactions: txs,
       goals: g,
       assets: assetData,
       age: p?.age ?? 0,
@@ -255,9 +251,11 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
       startOfMonth.setHours(0, 0, 0, 0)
       const thisMonthTx = transactions.filter((t: Transaction) => new Date(t.date) >= startOfMonth)
       const baseIncome = incomeOverride ?? profile?.monthly_income ?? 0
+
       const result = runEngine({
         income: baseIncome,
         transactions: thisMonthTx,
+        allTransactions: transactions,
         goals,
         assets: newAssets,
         age: profile?.age ?? 0,

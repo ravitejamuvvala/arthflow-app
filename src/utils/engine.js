@@ -1,7 +1,7 @@
 // ─── Unified Decision Engine ────────────────────────────────────────────
 // Single entry point: takes all user data, returns actionable output
 
-import { calculateMonthlyRequired, fmtInr, getBudgetRule, getMoneyFlow, getMonthlySnapshots } from './calculations'
+import { calculateMonthlyRequired, fmtInr, getMoneyFlow, getMonthlySnapshots } from './calculations'
 import { generateInsights } from './insights'
 
 // ─── Unified Score (0-100) ──────────────────────────────────────────────
@@ -185,12 +185,126 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings) {
 
 export { getHorizonAdvice, sipForGoal }
 
-export function runEngine({ income, transactions, goals, assets, age, profile }) {
+// ─── Adaptive Budget Rule ───────────────────────────────────────────────
+// Computes a personalised budget split from the user's actual financial data.
+// Adjusts the base age-tier for EMI load, emergency gaps, goal urgency, etc.
+
+function computeAdaptiveBudget({ age, income, emiAmount, emergencyMonths, nearestGoalYears, incomeType }) {
+  // 1. Age-based seed (classic 50/30/20 variant)
+  let needs, wants, save
+  if (age < 30)      { needs = 50; wants = 20; save = 30 }
+  else if (age < 45)  { needs = 50; wants = 25; save = 25 }
+  else                { needs = 55; wants = 25; save = 20 }
+
+  // 2. Adjust needs upward if EMIs already force it
+  const emiPct = income > 0 ? Math.round((emiAmount / income) * 100) : 0
+  if (emiPct > 0) {
+    // Essentials floor = non-EMI essentials (assume at least 25%) + actual EMI %
+    const essentialsFloor = 25 + emiPct
+    if (essentialsFloor > needs) {
+      const bump = essentialsFloor - needs
+      needs = essentialsFloor
+      // Compress lifestyle first, then savings
+      const wantsCut = Math.min(bump, wants - 10)
+      wants -= wantsCut
+      save -= (bump - wantsCut)
+    }
+  }
+
+  // 3. Boost savings if emergency fund is critically low
+  if (emergencyMonths < 3) {
+    const boost = emergencyMonths < 1 ? 10 : 5
+    const available = wants - 10
+    const actualBoost = Math.min(boost, available)
+    if (actualBoost > 0) {
+      save += actualBoost
+      wants -= actualBoost
+    }
+  }
+
+  // 4. Boost savings if a goal is urgent (< 3 years away)
+  if (nearestGoalYears !== null && nearestGoalYears < 3) {
+    const goalBoost = nearestGoalYears < 1.5 ? 5 : 3
+    const available = wants - 10
+    const actualBoost = Math.min(goalBoost, available)
+    if (actualBoost > 0) {
+      save += actualBoost
+      wants -= actualBoost
+    }
+  }
+
+  // 5. Variable income (freelance/business) needs more buffer
+  if (incomeType && ['freelance', 'business', 'other'].includes(incomeType.toLowerCase())) {
+    const buffer = 3
+    const available = wants - 10
+    const actualBuffer = Math.min(buffer, available)
+    if (actualBuffer > 0) {
+      save += actualBuffer
+      wants -= actualBuffer
+    }
+  }
+
+  // 6. Apply hard caps and re-balance
+  needs = Math.min(65, Math.max(30, needs))
+  save = Math.max(15, save)
+  wants = Math.max(10, wants)
+  // Normalize to 100
+  const total = needs + wants + save
+  if (total !== 100) {
+    // Adjust wants (the flexible bucket) to make it 100
+    wants = 100 - needs - save
+    if (wants < 10) {
+      wants = 10
+      // If still over, compress needs
+      needs = 100 - wants - save
+    }
+  }
+
+  // 7. Pick a human-readable label + rationale
+  let label, rationale
+  if (emiPct > 25) {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Debt-Adjusted — EMIs raised your essentials floor'
+  } else if (emergencyMonths < 3) {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Safety First — building emergency cover'
+  } else if (nearestGoalYears !== null && nearestGoalYears < 3) {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Goal Sprint — near-term goal needs priority'
+  } else if (age < 30) {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Wealth Builder — aggressive savings for your age'
+  } else if (age < 45) {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Balanced Growth — steady saving + living well'
+  } else {
+    label = `${needs} / ${wants} / ${save}`
+    rationale = 'Capital Preservation — protecting what you built'
+  }
+
+  return { needsTarget: needs, wantsTarget: wants, savingsTarget: save, label, rationale }
+}
+
+export function runEngine({ income, transactions, allTransactions, goals, assets, age, profile }) {
   const flow = getMoneyFlow(transactions, income, profile)
+
+  // ─── Stable monthly expense estimate ──────────────────────
+  // Use last month's actual spending (from allTransactions) for a stable estimate.
+  // Falls back to profile onboarding data, then current month's partial spend.
+  const prevMonthExpenses = (() => {
+    if (!allTransactions || allTransactions.length === 0) return 0
+    const now = new Date()
+    const pmStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const pmEnd   = new Date(now.getFullYear(), now.getMonth(), 1)
+    return allTransactions
+      .filter(t => t.type === 'expense' && new Date(t.date) >= pmStart && new Date(t.date) < pmEnd)
+      .reduce((s, t) => s + t.amount, 0)
+  })()
+  const profileExpenses = (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
+  const monthlyExpenses = prevMonthExpenses || profileExpenses || flow.totalSpent || 0
 
   // Emergency fund calculation
   const liquidCash = assets?.liquidCash || 0
-  const monthlyExpenses = flow.totalSpent || (profile?.expenses_essentials || 0) + (profile?.expenses_lifestyle || 0) + (profile?.expenses_emis || 0)
   const emergencyMonths = monthlyExpenses > 0 ? +(liquidCash / monthlyExpenses).toFixed(1) : 0
   const emergencyTarget = monthlyExpenses * 6
   const emergencyGap = Math.max(0, emergencyTarget - liquidCash)
@@ -303,7 +417,7 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   }
 
   // ─── Trend analysis (last 3 months) ───────────────────────
-  const snapshots = getMonthlySnapshots(transactions, flow.income)
+  const snapshots = getMonthlySnapshots(allTransactions || transactions, flow.income)
   const recentSnapshots = snapshots.slice(-3)
   let savingsTrend = 'stable'
   if (recentSnapshots.length >= 2) {
@@ -375,6 +489,17 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
   // ─── Goal Horizon Plan ─────────────────────────────────────
   const goalHorizonPlan = buildGoalHorizonPlan(configuredGoals, flow.savings)
 
+  // ─── Adaptive Budget ──────────────────────────────────────
+  const nearestGoalYears = goalHorizonPlan?.nearestGoal?.yearsLeft ?? null
+  const budget = computeAdaptiveBudget({
+    age: age || 25,
+    income: flow.income,
+    emiAmount: debtHealth.emiAmount,
+    emergencyMonths,
+    nearestGoalYears,
+    incomeType: profile?.income_type,
+  })
+
   return {
     flow,
     score,
@@ -395,6 +520,7 @@ export function runEngine({ income, transactions, goals, assets, age, profile })
     runway,
     lifestyleCreep,
     goalHorizonPlan,
+    budget,
   }
 }
 
@@ -412,7 +538,7 @@ export function getTopAction(engineResult, age = 25) {
   const monthlyExpenses = flow?.totalSpent ?? 0
   const income = flow?.income ?? 0
   const savings = flow?.savings ?? 0
-  const budget = getBudgetRule(age)
+  const budget = engineResult.budget
   const savingsTarget = budget.savingsTarget
 
   // ── P1: Debt crisis (DTI > 40%) ──────────────────────────────
@@ -600,7 +726,7 @@ export function getMoneyStory(engineResult, age = 25) {
   const savingsPct = flow?.savingsPct ?? 0
   const totalSpent = flow?.totalSpent ?? 0
   const lifestyle = flow?.catTotals?.lifestyle ?? 0
-  const budget = getBudgetRule(age)
+  const budget = engineResult.budget
   const savingsTarget = budget.savingsTarget
   const wantsTarget = budget.wantsTarget
 

@@ -17,7 +17,7 @@ import TopActionCard from '../components/TopActionCard'
 import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { Transaction } from '../types'
-import { fmtInr, getBudgetRule, getMonthlySnapshots, mapCategory } from '../utils/calculations'
+import { fmtInr, getMonthlySnapshots, mapCategory } from '../utils/calculations'
 import { getTopAction } from '../utils/engine'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   }
 
   const { flow, status, topProblem, action, insights } = engineResult
-  const budget = getBudgetRule(userAge)
+  const budget = engineResult.budget
   const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
   const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
   const thisMonthExpenses = thisMonthTx.filter(t => t.type === 'expense')
@@ -224,6 +224,26 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   }
 
   const snapshots = getMonthlySnapshots(transactions, profile?.monthly_income)
+
+  // Onboarding expense suggestions — show when no real expenses this month
+  const onboardingSuggestions = (thisMonthExpenses.length === 0 && profile) ? [
+    ...(profile.expenses_essentials ? [{ key: 'ess', note: 'Rent & Bills', category: 'Essentials', amount: profile.expenses_essentials, emoji: '🏠' }] : []),
+    ...(profile.expenses_emis ? [{ key: 'emi', note: 'Loan EMIs', category: 'EMIs', amount: profile.expenses_emis, emoji: '📋' }] : []),
+    ...(profile.expenses_lifestyle ? [{ key: 'life', note: 'Lifestyle', category: 'Lifestyle', amount: profile.expenses_lifestyle, emoji: '✨' }] : []),
+  ] : []
+
+  const addOnboardingExpenses = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || onboardingSuggestions.length === 0) return
+    const now = new Date().toISOString()
+    for (const item of onboardingSuggestions) {
+      await supabase.from('transactions').insert({
+        user_id: user.id, amount: item.amount, category: item.category,
+        type: 'expense' as const, note: item.note, date: now,
+      })
+    }
+    refreshData()
+  }
 
   return (
     <View style={s.root}>
@@ -442,10 +462,11 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           const budgetAmount = Math.round(flow.income * row.target / 100)
           const isWealth = row.label === 'Wealth'
           const fillPct = budgetAmount > 0 ? Math.round((row.amount / budgetAmount) * 100) : 0
+          const overAmount = row.amount - budgetAmount
           // Human-readable status label
           const statusLabel = isWealth
             ? (fillPct >= 100 ? 'On track' : fillPct >= 70 ? 'Almost there' : 'Needs work')
-            : (fillPct <= 85 ? 'On track' : fillPct <= 100 ? 'Almost full' : 'Over budget')
+            : (fillPct > 100 ? `Overspent ${fmtInr(overAmount)}` : fillPct > 85 ? 'Almost full' : 'On track')
           return (
             <View key={row.label} style={{ marginBottom: 14 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
@@ -531,6 +552,28 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
                 </TouchableOpacity>
               )
             })}
+          </View>
+        )}
+
+        {/* Onboarding expense suggestions — from sign-up estimates */}
+        {thisMonthExpenses.length === 0 && uniquePrevExpenses.length === 0 && onboardingSuggestions.length > 0 && (
+          <View style={{ marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 4 }}>💡 YOUR MONTHLY ESTIMATES</Text>
+            <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 10 }}>
+              From your sign-up — tap "Add all" to start tracking
+            </Text>
+            {onboardingSuggestions.map(item => (
+              <View key={item.key} style={s.txRow}>
+                <View style={s.txLeft}>
+                  <Text style={s.txNote}>{item.emoji} {item.note}</Text>
+                  <Text style={s.txDate}>{item.category}</Text>
+                </View>
+                <Text style={s.txAmount}>{fmtInr(item.amount)}</Text>
+              </View>
+            ))}
+            <TouchableOpacity onPress={addOnboardingExpenses} activeOpacity={0.7} style={{ marginTop: 10, backgroundColor: BLUE, borderRadius: 14, paddingVertical: 12, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontFamily: 'Manrope_700Bold', fontSize: 14 }}>Add all as expenses</Text>
+            </TouchableOpacity>
           </View>
         )}
 

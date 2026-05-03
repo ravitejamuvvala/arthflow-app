@@ -10,9 +10,9 @@ export function mapCategory(cat) {
 }
 
 export function fmtInr(val) {
-  if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`
-  if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`
-  if (val >= 1000) return `₹${(val / 1000).toFixed(1)}K`
+  if (val >= 10000000) return `₹${parseFloat((val / 10000000).toFixed(2))}Cr`
+  if (val >= 100000) return `₹${parseFloat((val / 100000).toFixed(2))}L`
+  if (val >= 1000) return `₹${parseFloat((val / 1000).toFixed(1))}K`
   return `₹${Math.round(val)}`
 }
 
@@ -58,12 +58,6 @@ export function calculateMonthlyRequired(goal) {
   const monthsLeft = Math.max(1, (targetDate.getFullYear() - now.getFullYear()) * 12 + (targetDate.getMonth() - now.getMonth()))
   const remaining = Math.max(0, goal.target_amount - (goal.saved_amount || goal.current_amount || 0))
   return { monthlyNeeded: Math.ceil(remaining / monthsLeft), monthsLeft, remaining, funded: goal.target_amount > 0 ? ((goal.saved_amount || goal.current_amount || 0) / goal.target_amount) : 0 }
-}
-
-export function getBudgetRule(age) {
-  if (age < 30) return { label: '50 / 20 / 30', needsTarget: 50, wantsTarget: 20, savingsTarget: 30, rationale: 'Aggressive wealth building' }
-  if (age < 45) return { label: '50 / 25 / 25', needsTarget: 50, wantsTarget: 25, savingsTarget: 25, rationale: 'Balanced growth' }
-  return { label: '55 / 25 / 20', needsTarget: 55, wantsTarget: 25, savingsTarget: 20, rationale: 'Capital preservation' }
 }
 
 export function getMonthlySnapshots(transactions, baseIncome) {

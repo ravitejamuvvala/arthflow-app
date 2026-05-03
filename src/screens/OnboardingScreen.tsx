@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
-import { commaFormat } from '../utils/calculations'
+import { commaFormat, fmtInr } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -81,11 +81,6 @@ const GOAL_CHIPS = [
   { id: 'business',   label: 'Start a Business',emoji: '💼', defaultTarget: 500000  },
 ]
 
-function fmtInr(val: number) {
-  if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`
-  if (val >= 1000) return `₹${(val / 1000).toFixed(0)}K`
-  return `₹${val}`
-}
 
 // ─── Slider ─────────────────────────────────────────────────────────────
 function SliderRow({ label, sublabel, value, min, max, step, color, onChange, prefix = '₹', suffix = '' }: {

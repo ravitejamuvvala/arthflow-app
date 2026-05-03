@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
+import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { commaFormat, stripCommas } from '../utils/calculations'
 

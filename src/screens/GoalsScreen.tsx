@@ -20,7 +20,7 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
 import { Goal } from '../types'
-import { commaFormat, stripCommas } from '../utils/calculations'
+import { commaFormat, fmtInr, stripCommas } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE     = '#1E3A8A'
@@ -59,13 +59,6 @@ const PRIORITY_CONFIG = {
   medium: { label: 'Medium', color: ORANGE, bg: ORANGE_L  },
   low:    { label: 'Low',    color: GREEN,  bg: GREEN_L   },
 } as const
-
-const formatINR = (n: number) => {
-  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
-  if (n >= 1000) return `₹${(n / 1000).toFixed(1)}K`
-  return `₹${Math.round(n)}`
-}
 
 const goalEmoji = (name: string) => {
   const n = name.toLowerCase()
@@ -260,7 +253,7 @@ export default function GoalsScreen() {
             <View style={styles.heroGlow} />
             <View style={styles.heroContent}>
               <Text style={styles.heroLabel}>{configuredGoals.length} GOAL{configuredGoals.length !== 1 ? 'S' : ''} PLANNED</Text>
-              <Text style={styles.heroAmount}>{formatINR(totalTarget)}</Text>
+              <Text style={styles.heroAmount}>{fmtInr(totalTarget)}</Text>
               <Text style={styles.heroSub}>total target</Text>
 
               {/* Key stats row */}
@@ -275,7 +268,7 @@ export default function GoalsScreen() {
                   <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: 10 }}>
                     <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular' }}>Nearest goal</Text>
                     <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold', marginTop: 2 }} numberOfLines={1}>{nearestGoal.name}</Text>
-                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{nearestGoal.yearsLeft}y · {formatINR(nearestGoal.targetAmount)}</Text>
+                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope_400Regular', marginTop: 1 }}>{nearestGoal.yearsLeft}y · {fmtInr(nearestGoal.targetAmount)}</Text>
                   </View>
                 )}
               </View>
@@ -339,7 +332,7 @@ export default function GoalsScreen() {
               <Text style={styles.realityCagrNote}>
                 {activeBuckets.map((b: any, i: number) => {
                   const bucketTarget = b.totalRemaining ?? b.goals.reduce((s: number, g: any) => s + g.remaining, 0)
-                  const part = `${b.goals.length} ${b.goals.length === 1 ? 'is' : 'are'} ${b.label.split(' (')[0].toLowerCase()} (${formatINR(bucketTarget)} needed)`
+                  const part = `${b.goals.length} ${b.goals.length === 1 ? 'is' : 'are'} ${b.label.split(' (')[0].toLowerCase()} (${fmtInr(bucketTarget)} needed)`
                   if (i === 0) return part.charAt(0).toUpperCase() + part.slice(1)
                   if (i === activeBuckets.length - 1) return ` and ${part}`
                   return `, ${part}`
@@ -357,7 +350,7 @@ export default function GoalsScreen() {
                       <Text style={{ fontSize: 16 }}>{bucket.emoji}</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.bucketTitle}>{bucket.label}</Text>
-                        <Text style={styles.bucketMeta}>{bucket.goals.length} goal{bucket.goals.length > 1 ? 's' : ''} · {formatINR(bucketTarget)} needed</Text>
+                        <Text style={styles.bucketMeta}>{bucket.goals.length} goal{bucket.goals.length > 1 ? 's' : ''} · {fmtInr(bucketTarget)} needed</Text>
                       </View>
                       <View style={[styles.bucketBadge, { backgroundColor: bucketAdvice.tagColor + '15' }]}>
                         <Text style={[styles.bucketBadgeText, { color: bucketAdvice.tagColor }]}>{bucketAdvice.tag}</Text>
@@ -369,7 +362,7 @@ export default function GoalsScreen() {
                       <View key={gp.id} style={styles.bucketGoalRow}>
                         <Text style={{ fontSize: 13 }}>{goalEmoji(gp.name)}</Text>
                         <Text style={styles.bucketGoalName} numberOfLines={1}>{gp.name}</Text>
-                        <Text style={[styles.bucketGoalSip, { color: bucketAdvice.tagColor }]}>{formatINR(gp.monthlyNeeded)}/mo</Text>
+                        <Text style={[styles.bucketGoalSip, { color: bucketAdvice.tagColor }]}>{fmtInr(gp.monthlyNeeded)}/mo</Text>
                       </View>
                     ))}
 
@@ -479,7 +472,7 @@ export default function GoalsScreen() {
                         })()}
                       </View>
                       <Text style={styles.goalAmounts}>
-                        {formatINR(goal.target_amount)}
+                        {fmtInr(goal.target_amount)}
                       </Text>
                       <Text style={styles.goalYears}>
                         {yearsLeft > 0 ? `${yearsLeft} yrs left · by ${targetYear}` : `Target: ${targetYear}`}
@@ -692,7 +685,7 @@ export default function GoalsScreen() {
                     <Text style={{ fontSize: 28 }}>{preset.emoji}</Text>
                     <Text style={styles.presetName}>{preset.name}</Text>
                     <Text style={styles.presetMeta}>
-                      {formatINR(preset.defaultTarget)} · {preset.defaultYears}y
+                      {fmtInr(preset.defaultTarget)} · {preset.defaultYears}y
                     </Text>
                   </TouchableOpacity>
                 )

@@ -67,17 +67,28 @@ export async function fetchAiChat(message, context) {
 
 export async function fetchAiReport(payload) {
   const headers = await getAuthHeader()
+  const url = `${CONFIG.BACKEND_URL}/insights/report`
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  }
 
+  // Retry once on network failure (handles Render free-tier cold start)
   let res
-  try {
-    res = await fetch(`${CONFIG.BACKEND_URL}/insights/report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(payload),
-    })
-  } catch (err) {
-    console.error('Network error fetching AI report:', err)
-    throw new Error('Network error: ' + err.message)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(url, opts)
+      break // success
+    } catch (err) {
+      if (attempt === 0) {
+        console.log('[AI] First attempt failed (server may be waking up), retrying...')
+        await new Promise(r => setTimeout(r, 3000))
+      } else {
+        console.error('Network error fetching AI report:', err)
+        throw new Error('Network error: ' + err.message)
+      }
+    }
   }
 
   if (!res.ok) {

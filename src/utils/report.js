@@ -1,7 +1,7 @@
 // ─── Structured Report Generator ────────────────────────────────────────
 // Builds app report structure + download report text from engine output
 
-import { fmtInr, getBudgetRule } from './calculations'
+import { fmtInr } from './calculations'
 
 // ═══════════════════════════════════════════════════════════════════════
 // A. Build structured app report from engine + AI data
@@ -61,7 +61,7 @@ function getScoreLabel(score) {
 function buildLocalSummary(engineResult, age = 25) {
   if (!engineResult?.flow) return 'Add transactions to see your financial summary.'
   const { flow, emergencyMonths } = engineResult
-  const budget = getBudgetRule(age)
+  const budget = engineResult.budget
   const parts = []
   if (flow.savingsPct >= budget.savingsTarget) parts.push(`Saving ${flow.savingsPct}% of income`)
   else if (flow.income > 0) parts.push(`Saving ${flow.savingsPct}% — below the ${budget.savingsTarget}% target`)
@@ -73,7 +73,7 @@ function buildLocalSummary(engineResult, age = 25) {
 function buildActionPlan(engineResult, age = 25) {
   if (!engineResult?.flow) return []
   const { flow, emergencyMonths, goalCalcs, risk } = engineResult
-  const budget = getBudgetRule(age)
+  const budget = engineResult.budget
   const plan = []
   let step = 1
 
@@ -214,8 +214,8 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add(`• Other: ${fmtInr(flow?.catTotals?.other ?? 0)}`)
   add(`• Net Savings: ${fmtInr(flow?.savings ?? 0)}`)
   blank()
-  const idealRule = age < 30 ? '50/20/30' : age < 45 ? '50/25/25' : '55/25/20'
-  add(`• Recommended Budget Rule (age ${age}): ${idealRule} (Needs/Wants/Savings)`)
+  const idealRule = engineResult.budget?.label ?? '50 / 25 / 25'
+  add(`• Your Budget Rule: ${idealRule} (Needs/Wants/Savings)`)
   add(`• Your Ratio: ${flow?.needsPct ?? 0}/${flow?.wantsPct ?? 0}/${flow?.savingsPct ?? 0}`)
   blank()
 
@@ -224,7 +224,7 @@ export function generateDownloadReport({ engineResult, profile, goals, assets, t
   add('3. SAVINGS ANALYSIS')
   add(divider)
   const savingsPct = flow?.savingsPct ?? 0
-  const budget = getBudgetRule(age)
+  const budget = engineResult.budget
   add(`• Current Savings Rate: ${savingsPct}%`)
   add(`• Target: ${budget.savingsTarget}% minimum`)
   if (savingsPct < budget.savingsTarget && income > 0) {

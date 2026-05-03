@@ -19,7 +19,7 @@ import {
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { useAppData } from '../lib/DataContext'
 import { supabase } from '../lib/supabase'
-import { commaFormat, stripCommas } from '../utils/calculations'
+import { commaFormat, fmtInr, stripCommas } from '../utils/calculations'
 
 // ─── Design Tokens ──────────────────────────────────────────────────────
 const BLUE    = '#1E3A8A'
@@ -75,13 +75,6 @@ const ASSET_CONFIG: AssetConfig[] = [
   { key: 'other',       label: 'Other Assets',     subLabel: 'NPS · Bonds · Crypto',    emoji: '🔧', color: TXT2,   bg: BG_SEC,   description: 'NPS, bonds, crypto, and other investments.' },
 ]
 
-function fmtInr(val: number) {
-  if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`
-  if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`
-  if (val >= 1000)   return `₹${(val / 1000).toFixed(1)}K`
-  return `₹${Math.round(val)}`
-}
-
 function totalNetWorth(a: AssetPortfolio): number {
   return NUMERIC_ASSET_KEYS.reduce((s, k) => s + (a[k] || 0), 0)
 }
@@ -109,7 +102,7 @@ function getWealthInsights(assets: AssetPortfolio, nw: number) {
 // COMPONENT
 // ═════════════════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
-  const { profile, transactions, goals, assets: sharedAssets, loading: dataLoading, refreshData, updateAssets } = useAppData()
+  const { profile, transactions, goals, assets: sharedAssets, engineResult, loading: dataLoading, refreshData, updateAssets } = useAppData()
   const [userEmail, setUserEmail]   = useState('')
   const [assets, setAssets]         = useState<AssetPortfolio>(defaultAssets)
   const [refreshing, setRefreshing] = useState(false)
@@ -212,8 +205,7 @@ export default function ProfileScreen() {
   }
 
   const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
-  const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
-  const income     = thisMonthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const income     = engineResult?.flow?.income ?? 0
   const monthlyIncome = profile?.monthly_income ?? 0
   const age = profile?.age ?? 0
 
