@@ -163,23 +163,31 @@ export default function GoalsScreen() {
 
     const { data: { session: sess } } = await supabase.auth.getSession()
     const user = sess?.user
-    if (!user) return
+    if (!user) { Alert.alert('Session expired', 'Please sign in again.'); return }
 
-    const payload = {
+    const payload: any = {
       user_id: user.id,
       name: fName.trim(),
       target_amount: Number(stripCommas(fTarget)),
       saved_amount: Number(fSaved) || 0,
       target_date: `${fYear}-12-31`,
-      priority: fPriority,
     }
 
-    const { error } = editGoal
-      ? await supabase.from('goals').update(payload).eq('id', editGoal.id)
-      : await supabase.from('goals').insert(payload)
-    if (error) { Alert.alert('Error', 'Could not save goal. Please try again.'); return }
-    setShowSheet(false)
-    refreshData()
+    try {
+      const { error } = editGoal
+        ? await supabase.from('goals').update(payload).eq('id', editGoal.id)
+        : await supabase.from('goals').insert(payload)
+      if (error) {
+        console.error('[Goal] Save error:', error)
+        Alert.alert('Error', error.message || 'Could not save goal. Please try again.')
+        return
+      }
+      setShowSheet(false)
+      refreshData()
+    } catch (e: any) {
+      console.error('[Goal] Unexpected error:', e)
+      Alert.alert('Error', e?.message || 'Something went wrong.')
+    }
   }
 
   const deleteGoal = async () => {
@@ -286,53 +294,6 @@ export default function GoalsScreen() {
                 </Text>
               )}
             </View>
-          </View>
-        )}
-
-        {/* ── Emergency Fund Status ──────────────────────────────── */}
-        {liquidAnalysis && liquidAnalysis.emergencyTarget > 0 && (
-          <View style={[styles.realityCard, { marginBottom: 14 }]}>
-            <View style={styles.realityHeader}>
-              <Text style={styles.realityIcon}>{liquidAnalysis.emergencyStatus === 'covered' ? '✅' : liquidAnalysis.emergencyStatus === 'building' ? '🔶' : '🔴'}</Text>
-              <Text style={styles.realityTitle}>EMERGENCY FUND</Text>
-              <View style={[styles.bucketBadge, {
-                backgroundColor: liquidAnalysis.emergencyStatus === 'covered' ? GREEN_L : liquidAnalysis.emergencyStatus === 'building' ? ORANGE_L : '#FEE2E2'
-              }]}>
-                <Text style={[styles.bucketBadgeText, {
-                  color: liquidAnalysis.emergencyStatus === 'covered' ? GREEN_H : liquidAnalysis.emergencyStatus === 'building' ? ORANGE_H : RED
-                }]}>
-                  {liquidAnalysis.emergencyMonths >= 6 ? `${liquidAnalysis.emergencyMonths} months` : `${liquidAnalysis.emergencyMonths} of 6 months`}
-                </Text>
-              </View>
-            </View>
-
-            {/* Progress bar */}
-            <View style={styles.realityBarWrap}>
-              <View style={styles.realityBarTrack}>
-                <View style={[styles.realityBarFill, {
-                  width: `${Math.min(100, Math.round((liquidAnalysis.liquidCash / Math.max(1, liquidAnalysis.emergencyTarget)) * 100))}%`,
-                  backgroundColor: liquidAnalysis.emergencyStatus === 'covered' ? GREEN : liquidAnalysis.emergencyStatus === 'building' ? ORANGE : RED
-                }]} />
-              </View>
-              <Text style={[styles.realityBarLabel, { color: TXT2 }]}>{formatINRExact(liquidAnalysis.liquidCash)} / {formatINRExact(liquidAnalysis.emergencyTarget)}</Text>
-            </View>
-
-            {/* Liquid allocation breakdown */}
-            {liquidAnalysis.excessLiquid > 0 && (
-              <View style={{ marginTop: 8, padding: 10, backgroundColor: GREEN_L, borderRadius: 10 }}>
-                <Text style={{ fontSize: 12, color: GREEN_H, fontFamily: 'Manrope_700Bold' }}>
-                  {formatINRExact(liquidAnalysis.excessLiquid)} excess liquid
-                  {liquidAnalysis.liquidUsedForGoals > 0 ? ` → ${formatINRExact(liquidAnalysis.liquidUsedForGoals)} allocated to short-term goals` : ' → available for goals'}
-                </Text>
-              </View>
-            )}
-            {liquidAnalysis.emergencyGap > 0 && (
-              <View style={{ marginTop: 8, padding: 10, backgroundColor: '#FEF3C7', borderRadius: 10 }}>
-                <Text style={{ fontSize: 12, color: ORANGE_H, fontFamily: 'Manrope_400Regular' }}>
-                  {formatINRExact(liquidAnalysis.emergencyGap)} more needed · ~{formatINRExact(Math.ceil(liquidAnalysis.emergencyGap / 6))}/mo for 6 months
-                </Text>
-              </View>
-            )}
           </View>
         )}
 

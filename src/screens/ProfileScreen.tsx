@@ -1,20 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import { useAppData } from '../lib/DataContext'
@@ -246,9 +246,10 @@ export default function ProfileScreen() {
   const wealthInsights = getWealthInsights(assets, nw)
   const activeCfg = ASSET_CONFIG.find(c => c.key === activeAssetSheet)
   const liq = engineResult?.liquidFundAnalysis
-  const emergencyReserve = liq ? Math.min(assets.liquidCash, liq.emergencyTarget ?? 0) : 0
   const goalAllocated = liq?.liquidUsedForGoals ?? 0
-  const freeWealth = Math.max(0, nw - emergencyReserve - goalAllocated)
+  // When user has an emergency goal, the goal handles the reserve — don't double-count
+  const emergencyReserved = (!liq?.hasEmergencyGoal && liq?.emergencyTarget > 0) ? Math.min(assets.liquidCash ?? 0, liq.emergencyTarget) : 0
+  const freeWealth = Math.max(0, nw - emergencyReserved - goalAllocated)
 
   // Allocation segments
   const allocSegments = ASSET_CONFIG
@@ -333,17 +334,24 @@ export default function ProfileScreen() {
         </View>
 
         {/* Wealth breakdown: reserved vs free */}
-        {showNetWorth && nw > 0 && (emergencyReserve > 0 || goalAllocated > 0) && (
+        {showNetWorth && nw > 0 && (emergencyReserved > 0 || goalAllocated > 0) && (
           <View style={{ marginBottom: 14, padding: 12, backgroundColor: BG_SEC, borderRadius: 14, gap: 6 }}>
-            {emergencyReserve > 0 && (
+            {emergencyReserved > 0 && (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🛡️ Emergency reserve</Text>
-                <Text style={{ fontSize: 13, color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>− {fmtInr(emergencyReserve)}</Text>
+                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🛡️ Emergency reserve (6 months)</Text>
+                <Text style={{ fontSize: 13, color: ORANGE_H, fontFamily: 'Manrope_700Bold' }}>− {fmtInr(emergencyReserved)}</Text>
               </View>
+            )}
+            {emergencyReserved > 0 && (
+              <Text style={{ fontSize: 11, color: TXT3, fontFamily: 'Manrope_400Regular' }}>
+                {liq.emergencyMonths >= 6
+                  ? `✓ ${fmtInr(liq.emergencyTarget)} target covered — ${liq.emergencyMonths} months of expenses`
+                  : `${fmtInr(assets.liquidCash ?? 0)} of ${fmtInr(liq.emergencyTarget)} target — ${liq.emergencyMonths} months covered`}
+              </Text>
             )}
             {goalAllocated > 0 && (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🎯 Allocated to goals</Text>
+                <Text style={{ fontSize: 12, color: TXT2, fontFamily: 'Manrope_400Regular' }}>🎯 Allocated to short-term goals</Text>
                 <Text style={{ fontSize: 13, color: BLUE, fontFamily: 'Manrope_700Bold' }}>− {fmtInr(goalAllocated)}</Text>
               </View>
             )}
@@ -444,7 +452,7 @@ export default function ProfileScreen() {
               onValueChange={(val) => {
                 const next = { ...assets, hasTermInsurance: val, termCoverAmount: val ? assets.termCoverAmount : 0 }
                 setAssets(next)
-                queueMicrotask(() => updateAssets(next))
+                setTimeout(() => updateAssets(next), 0)
               }}
               trackColor={{ false: '#E2E8F0', true: GREEN }}
               thumbColor="#fff"
@@ -459,7 +467,9 @@ export default function ProfileScreen() {
                   const val = Number(stripCommas(t)) || 0
                   setAssets(prev => ({ ...prev, termCoverAmount: val }))
                 }}
-                onBlur={() => setAssets(prev => { updateAssets(prev); return prev })}
+                onBlur={() => {
+                  setAssets(prev => { setTimeout(() => updateAssets(prev), 0); return prev })
+                }}
                 placeholder="e.g. 1,00,00,000"
                 placeholderTextColor={TXT3}
                 keyboardType="numeric"
@@ -485,7 +495,7 @@ export default function ProfileScreen() {
               onValueChange={(val) => {
                 const next = { ...assets, hasHealthInsurance: val, healthCoverAmount: val ? assets.healthCoverAmount : 0 }
                 setAssets(next)
-                queueMicrotask(() => updateAssets(next))
+                setTimeout(() => updateAssets(next), 0)
               }}
               trackColor={{ false: '#E2E8F0', true: GREEN }}
               thumbColor="#fff"
@@ -500,7 +510,9 @@ export default function ProfileScreen() {
                   const val = Number(stripCommas(t)) || 0
                   setAssets(prev => ({ ...prev, healthCoverAmount: val }))
                 }}
-                onBlur={() => setAssets(prev => { updateAssets(prev); return prev })}
+                onBlur={() => {
+                  setAssets(prev => { setTimeout(() => updateAssets(prev), 0); return prev })
+                }}
                 placeholder="e.g. 10,00,000"
                 placeholderTextColor={TXT3}
                 keyboardType="numeric"

@@ -64,12 +64,23 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
     let txs: Transaction[] = txRes.data ?? []
     const g = goalRes.data ?? []
 
-    // Load assets from AsyncStorage
-    let assetData = null
-    try {
-      const raw = await AsyncStorage.getItem(ASSETS_KEY)
-      if (raw) assetData = JSON.parse(raw)
-    } catch {}
+    // Load assets: Supabase (primary) → AsyncStorage (fallback cache)
+    let assetData = p?.assets ?? null
+    if (!assetData) {
+      try {
+        const raw = await AsyncStorage.getItem(ASSETS_KEY)
+        if (raw) {
+          assetData = JSON.parse(raw)
+          // Migrate local-only assets to Supabase
+          if (user && assetData) {
+            await supabase.from('profiles').update({ assets: assetData }).eq('id', user.id)
+          }
+        }
+      } catch {}
+    } else {
+      // Keep AsyncStorage in sync as cache
+      try { await AsyncStorage.setItem(ASSETS_KEY, JSON.stringify(assetData)) } catch {}
+    }
 
     // ── One-time cleanup: remove previously auto-seeded DB records ──
     // Earlier code wrote onboarding estimates as real DB rows. Remove them
@@ -291,6 +302,41 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
           risk: eng.risk,
           trend: eng.trend,
           avgGoalFunded: eng.avgGoalFunded,
+          debtHealth: eng.debtHealth,
+          runway: eng.runway,
+          lifestyleCreep: eng.lifestyleCreep,
+          budget: eng.budget ? {
+            label: eng.budget.label,
+            needsTarget: eng.budget.needsTarget,
+            wantsTarget: eng.budget.wantsTarget,
+            savingsTarget: eng.budget.savingsTarget,
+            rationale: eng.budget.rationale,
+            strategy: eng.budget.strategy,
+            verdict: eng.budget.verdict,
+            goalSipNeeded: eng.budget.goalSipNeeded,
+            goalSipGap: eng.budget.goalSipGap,
+            compliance: eng.budget.compliance,
+          } : undefined,
+          goalHorizonPlan: eng.goalHorizonPlan ? {
+            totalSipNeeded: eng.goalHorizonPlan.totalSipNeeded,
+            totalSipRaw: eng.goalHorizonPlan.totalSipRaw,
+            sipCapped: eng.goalHorizonPlan.sipCapped,
+            liquidUsed: eng.goalHorizonPlan.liquidUsed,
+            excessLiquid: eng.goalHorizonPlan.excessLiquid,
+            stretchGoals: eng.goalHorizonPlan.stretchGoals,
+            buckets: eng.goalHorizonPlan.buckets?.map((b: any) => ({
+              label: b.label,
+              totalSip: b.totalSip,
+              totalLiquidUsed: b.totalLiquidUsed,
+              goals: b.goals?.map((g: any) => ({
+                name: g.name,
+                monthlySip: g.monthlySip,
+                liquidAllocated: g.liquidAllocated,
+                priority: g.priority,
+              })),
+            })),
+          } : undefined,
+          liquidFundAnalysis: eng.liquidFundAnalysis,
         },
       })
       setAiReport(report)
@@ -334,6 +380,11 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
 
   const updateAssets = useCallback(async (newAssets: any) => {
     setAssets(newAssets)
+    // Save to Supabase (primary) + AsyncStorage (cache)
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    if (sess?.user) {
+      await supabase.from('profiles').update({ assets: newAssets }).eq('id', sess.user.id)
+    }
     await AsyncStorage.setItem(ASSETS_KEY, JSON.stringify(newAssets))
     // Clear cached AI report so next engine recompute triggers a fresh one
     await AsyncStorage.removeItem(AI_REPORT_KEY)

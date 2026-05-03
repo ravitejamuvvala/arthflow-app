@@ -166,8 +166,13 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings, { assets, monthly
   const thisYear = new Date().getFullYear()
 
   // ── Step 1: Compute excess liquid cash after emergency reserve ──
+  // If user has an explicit Emergency Fund goal → skip internal reserve (goal handles it)
+  const hasEmergencyGoal = configuredGoals.some(g => {
+    const n = (g.name || '').toLowerCase()
+    return n.includes('emergency') || n.includes('safety') || n.includes('rainy day')
+  })
   const liquidCash = Number(assets?.liquidCash) || 0
-  const emergencyTarget = (monthlyExpenses || 0) * 6
+  const emergencyTarget = hasEmergencyGoal ? 0 : (monthlyExpenses || 0) * 6
   const excessLiquid = Math.max(0, liquidCash - emergencyTarget)
 
   // ── Step 2: Per-goal projections sorted by deadline (nearest first) ──
@@ -185,13 +190,24 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings, { assets, monthly
   }).sort((a, b) => a.yearsLeft - b.yearsLeft)
 
   // ── Step 3: Allocate excess liquid to short-term goals (≤3 yrs) ──
+  // For emergency goals: liquid cash directly covers them (since it IS the emergency fund)
   let liquidPool = excessLiquid
   const goalProjections = rawGoals.map(g => {
     let liquidAllocated = 0
     let adjustedRemaining = g.remaining
 
-    // Only short-term goals (≤3 yrs) get liquid cash allocation
-    if (g.advice.bucket === 'short' && liquidPool > 0 && adjustedRemaining > 0) {
+    // Emergency goals: liquid cash directly covers this goal's target
+    const isEmergencyGoal = (() => {
+      const n = (g.name || '').toLowerCase()
+      return n.includes('emergency') || n.includes('safety') || n.includes('rainy day')
+    })()
+
+    if (isEmergencyGoal && liquidCash > 0 && adjustedRemaining > 0) {
+      // Liquid cash IS the emergency fund — allocate directly from total liquid, not just excess
+      liquidAllocated = Math.min(liquidCash, adjustedRemaining)
+      adjustedRemaining -= liquidAllocated
+    } else if (g.advice.bucket === 'short' && liquidPool > 0 && adjustedRemaining > 0) {
+      // Only short-term goals (≤3 yrs) get excess liquid cash allocation
       liquidAllocated = Math.min(liquidPool, adjustedRemaining)
       liquidPool -= liquidAllocated
       adjustedRemaining -= liquidAllocated
@@ -265,6 +281,15 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings, { assets, monthly
     }
   }).filter(b => b.goals.length > 0)
 
+  // Track total liquid allocated (excess pool for regular goals + direct liquid for emergency goals)
+  const emergencyGoalLiquidUsed = goalProjections
+    .filter(g => {
+      const n = (g.name || '').toLowerCase()
+      return n.includes('emergency') || n.includes('safety') || n.includes('rainy day')
+    })
+    .reduce((s, g) => s + g.liquidAllocated, 0)
+  const regularLiquidUsed = excessLiquid - liquidPool
+
   return {
     goalProjections,
     totalSipNeeded: effectiveSipNeeded,
@@ -276,9 +301,10 @@ function buildGoalHorizonPlan(configuredGoals, monthlySavings, { assets, monthly
     nearestGoal,
     buckets,
     monthlySavings: monthlySavings || 0,
-    liquidUsed: excessLiquid - liquidPool,  // how much liquid was allocated
+    liquidUsed: regularLiquidUsed + emergencyGoalLiquidUsed,  // total liquid allocated
     excessLiquid,                           // total available after emergency
     stretchGoals,                           // goals that don't fit in SIP budget
+    hasEmergencyGoal,
   }
 }
 
@@ -865,14 +891,16 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
 
   // ─── Liquid Fund Analysis ───────────────────────────────────
   // Exposes how liquid cash is split between emergency reserve and goal allocation
+  const hasEmergencyGoal = goalHorizonPlan?.hasEmergencyGoal ?? false
   const liquidFundAnalysis = {
     liquidCash,
-    emergencyTarget,
-    emergencyGap,
+    emergencyTarget: hasEmergencyGoal ? 0 : emergencyTarget,
+    emergencyGap: hasEmergencyGoal ? 0 : emergencyGap,
     emergencyMonths,
     emergencyStatus: emergencyMonths >= 6 ? 'covered' : emergencyMonths >= 3 ? 'building' : 'critical',
     excessLiquid: goalHorizonPlan?.excessLiquid ?? 0,
     liquidUsedForGoals: goalHorizonPlan?.liquidUsed ?? 0,
+    hasEmergencyGoal,
     maturityMonths: pastCompletedSnapshots.length,
     mature: pastCompletedSnapshots.length >= 4,
   }
