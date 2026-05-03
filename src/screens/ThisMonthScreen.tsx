@@ -111,6 +111,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
   // Carry-forward selection
   const [carryItems, setCarryItems] = useState<Set<string>>(new Set())
+  const [showAllExpenses, setShowAllExpenses] = useState(false)
 
   // Derived values from shared context
   const userName = profile?.full_name || 'there'
@@ -450,10 +451,15 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
         )}
 
         {/* Recent transactions */}
-        {thisMonthExpenses.length > 0 && (
+        {thisMonthExpenses.length > 0 && (() => {
+          const VISIBLE_COUNT = 5
+          const sorted = [...thisMonthExpenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          const visible = showAllExpenses ? sorted : sorted.slice(0, VISIBLE_COUNT)
+          const hasMore = sorted.length > VISIBLE_COUNT
+          return (
           <View style={{ marginTop: 16 }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 8 }}>RECENT — tap to edit</Text>
-              {thisMonthExpenses.map(t => (
+              {visible.map(t => (
                 <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.6}>
                   <View style={s.txLeft}>
                     <Text style={s.txNote}>{t.note || t.category}</Text>
@@ -467,8 +473,20 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
                   </View>
                 </TouchableOpacity>
               ))}
+              {hasMore && (
+                <TouchableOpacity
+                  onPress={() => setShowAllExpenses(prev => !prev)}
+                  activeOpacity={0.7}
+                  style={{ alignItems: 'center', paddingVertical: 10, marginTop: 4 }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: BLUE, fontFamily: 'Manrope_700Bold' }}>
+                    {showAllExpenses ? 'Show less ↑' : `View all (${sorted.length}) ↓`}
+                  </Text>
+                </TouchableOpacity>
+              )}
           </View>
-        )}
+          )
+        })()}
       </View>
 
       {/* ── Monthly Trend ────────────────────────────────── */}
