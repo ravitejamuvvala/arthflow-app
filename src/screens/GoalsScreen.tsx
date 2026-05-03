@@ -171,13 +171,13 @@ export default function GoalsScreen() {
       target_amount: Number(stripCommas(fTarget)),
       saved_amount: Number(fSaved) || 0,
       target_date: `${fYear}-12-31`,
+      priority: fPriority,
     }
 
-    if (editGoal) {
-      await supabase.from('goals').update(payload).eq('id', editGoal.id)
-    } else {
-      await supabase.from('goals').insert(payload)
-    }
+    const { error } = editGoal
+      ? await supabase.from('goals').update(payload).eq('id', editGoal.id)
+      : await supabase.from('goals').insert(payload)
+    if (error) { Alert.alert('Error', 'Could not save goal. Please try again.'); return }
     setShowSheet(false)
     refreshData()
   }
@@ -187,7 +187,8 @@ export default function GoalsScreen() {
     Alert.alert('Delete goal?', `Are you sure you want to delete "${editGoal.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-        await supabase.from('goals').delete().eq('id', editGoal.id)
+        const { error } = await supabase.from('goals').delete().eq('id', editGoal.id)
+        if (error) { Alert.alert('Error', 'Could not delete goal.'); return }
         setShowSheet(false)
         refreshData()
       }},

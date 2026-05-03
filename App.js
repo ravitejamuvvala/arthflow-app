@@ -9,9 +9,14 @@ import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-conte
 import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
 
-const clearLocalData = async () => {
+const clearLocalData = async (preserveAssets = false) => {
   const keys = await AsyncStorage.getAllKeys()
-  const arthKeys = keys.filter(k => k.startsWith('@arthflow_'))
+  const arthKeys = keys.filter(k => {
+    if (!k.startsWith('@arthflow_')) return false
+    // Preserve assets on normal sign-in (they're only in AsyncStorage, not Supabase)
+    if (preserveAssets && k === '@arthflow_assets') return false
+    return true
+  })
   if (arthKeys.length) await AsyncStorage.multiRemove(arthKeys)
 }
 
@@ -70,8 +75,8 @@ export default function App() {
         setSession(null)
         setIsOnboarded(null)
       } else if (event === 'SIGNED_IN') {
-        // New login/signup — clear any stale local data from previous user
-        clearLocalData()
+        // New login/signup — clear stale caches but preserve assets (only in AsyncStorage)
+        clearLocalData(true)
         setSession(session)
         setActiveTab('home')
       } else {

@@ -25,7 +25,7 @@ export default function SignUpScreen({ onSignUpSuccess, onCancel }: SignUpScreen
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const validatePassword = (pw) => {
+  const validatePassword = (pw: string) => {
     // At least 1 capital, 1 special, 1 number, min 6 chars
     return /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{6,}$/.test(pw);
   };

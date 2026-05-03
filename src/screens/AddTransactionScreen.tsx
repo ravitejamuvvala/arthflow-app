@@ -56,8 +56,14 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
 
+    if (!user) {
+      setLoading(false)
+      Alert.alert('Session expired', 'Please sign in again.')
+      return
+    }
+
     const { error } = await supabase.from('transactions').insert([{
-      user_id: user?.id,
+      user_id: user.id,
       amount: Number(stripCommas(amount)),
       category,
       type,

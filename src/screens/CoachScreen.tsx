@@ -92,10 +92,12 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
   const investment = engineResult?.investment
   const risk = engineResult?.risk
 
-  // Pre-computed from engine — no re-derivation
-  const limit30 = Math.round(income * 0.30)
-  const overLifestyle = lifestyle - limit30
-  const savingsGap = Math.round(income * 0.20 - saved)
+  // Pre-computed from engine — use adaptive budget targets
+  const budgetTargets = engineResult?.budget
+  const lifestyleLimit = budgetTargets ? Math.round(income * budgetTargets.wantsTarget / 100) : Math.round(income * 0.30)
+  const overLifestyle = lifestyle - lifestyleLimit
+  const savingsTarget = budgetTargets ? Math.round(income * budgetTargets.savingsTarget / 100) : Math.round(income * 0.20)
+  const savingsGap = savingsTarget - saved
   const emergencyTarget = risk?.emergencyTarget ?? totalExp * 6
   const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.flow?.income ?? 0))
   const yearsToRetirement = Math.max(1, 60 - (age || 25))
@@ -105,7 +107,7 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 
   // --- Spending / overspending ---
   if (lc.includes('spending') || lc.includes('spent') || lc.includes('high') || lc.includes('review expense') || lc.includes('cut') || lc.includes('reduc') || lc.includes('expense') || lc.includes('trim')) {
-    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${needsPct}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overLifestyle > 0 ? ` — ${fmtInr(overLifestyle)} over the 30% limit` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overLifestyle > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overLifestyle * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
+    return `${name}, here's your spending breakdown:\n• Essentials: ${fmtInr(essentials)} (${needsPct}%)\n• Lifestyle: ${fmtInr(lifestyle)} (${lifePct}%)${overLifestyle > 0 ? ` — ${fmtInr(overLifestyle)} over your ${budgetTargets?.wantsTarget ?? 30}% budget` : ''}\n• EMIs: ${fmtInr(emis)}\n\n${overLifestyle > 0 ? `Action: Cut dining/shopping by ${fmtInr(Math.round(overLifestyle * 0.5))} first — that's the easiest win. Cancel unused subscriptions.` : 'You\'re within limits! Review subscriptions to save more.'}`
   }
 
   // --- Savings ---
@@ -214,9 +216,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
 
     setTimeout(() => chatScroll.current?.scrollToEnd({ animated: true }), 300)
 
-    // Refresh shared data so engine is current
-    await refreshData()
-
+    // Use current engine data — no need to re-fetch on every message
     const chatContext = {
       profile,
       transactions: transactions.slice(0, 20),

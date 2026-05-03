@@ -14,7 +14,7 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import SignUpScreen from './SignUpScreen'
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,7 +30,6 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true)
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      console.log('SignIn response:', { data, error })
       if (error) {
         setLoading(false)
         setErrorMsg('Invalid credentials.')

@@ -133,10 +133,10 @@ export default function ProfileScreen() {
     if (sharedAssets) setAssets({ ...defaultAssets, ...sharedAssets })
   }, [sharedAssets])
 
-  // Fetch user email once
+  // Fetch user email once from session (avoids network call)
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserEmail(user.email ?? '')
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUserEmail(session.user.email ?? '')
     })
   }, [])
 
@@ -209,19 +209,26 @@ export default function ProfileScreen() {
   const monthlyIncome = profile?.monthly_income ?? 0
   const age = profile?.age ?? 0
 
-  // Streak
+  // Streak — consecutive months with positive savings (single pass)
   const getStreak = () => {
+    // Group transactions by year-month in one pass
+    const monthMap = new Map<string, { income: number; expense: number }>()
+    for (const t of transactions) {
+      const td = new Date(t.date)
+      const key = `${td.getFullYear()}-${td.getMonth()}`
+      const entry = monthMap.get(key) ?? { income: 0, expense: 0 }
+      if (t.type === 'income') entry.income += t.amount
+      else entry.expense += t.amount
+      monthMap.set(key, entry)
+    }
     let streak = 0
     const now = new Date()
     for (let i = 0; i < 24; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthTx = transactions.filter(t => {
-        const td = new Date(t.date)
-        return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear()
-      })
-      const mInc = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-      const mExp = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-      if (mInc - mExp > 0 || i === 0) streak++
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      const entry = monthMap.get(key)
+      if (!entry) { if (i === 0) { streak++; continue } else break }
+      if (entry.income - entry.expense > 0 || i === 0) streak++
       else break
     }
     return streak

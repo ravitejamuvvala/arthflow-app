@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -95,9 +96,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const { profile, transactions, goals, assets, engineResult, aiReport, aiReportLoading: reportLoading, loading, incomeOverride, setIncomeOverride, refreshData } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
-  // Report stale indicator (when user returns to Home after changes on other tabs)
-  const [reportStale, setReportStale] = useState(false)
-
   // Expense sheet
   const [showExpSheet, setShowExpSheet] = useState(false)
   const [editItem, setEditItem] = useState<Transaction | null>(null)
@@ -123,14 +121,8 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
   const onRefresh = async () => {
     setRefreshing(true)
-    setReportStale(false)
     await refreshData()
     setRefreshing(false)
-  }
-
-  const forceRefreshReport = async () => {
-    setReportStale(false)
-    await refreshData()
   }
 
   const firstName = userName.split(' ')[0]
@@ -159,30 +151,37 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   }
 
   const saveExpense = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
     const amt = Number(expAmount)
     if (!expDesc.trim() || amt <= 0) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { Alert.alert('Session expired', 'Please sign in again.'); return }
     const payload = {
       user_id: user.id, amount: amt, category: CAT_CONFIG[expCat].label,
       type: 'expense', note: expDesc.trim(),
       date: expDate ? (() => {
         const parts = expDate.trim().split(/[\s\/\-]+/)
         if (parts.length === 2) {
-          const now = new Date()
-          return new Date(now.getFullYear(), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10)).toISOString()
+          const m = parseInt(parts[0], 10)
+          const d = parseInt(parts[1], 10)
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+            const now = new Date()
+            return new Date(now.getFullYear(), m - 1, d).toISOString()
+          }
         }
         return new Date().toISOString()
       })() : new Date().toISOString(),
     }
-    if (editItem) await supabase.from('transactions').update(payload).eq('id', editItem.id)
-    else await supabase.from('transactions').insert(payload)
+    const { error } = editItem
+      ? await supabase.from('transactions').update(payload).eq('id', editItem.id)
+      : await supabase.from('transactions').insert(payload)
+    if (error) { Alert.alert('Error', 'Could not save expense. Please try again.'); return }
     setShowExpSheet(false); refreshData()
   }
 
   const deleteExpense = async () => {
     if (!editItem) return
-    await supabase.from('transactions').delete().eq('id', editItem.id)
+    const { error } = await supabase.from('transactions').delete().eq('id', editItem.id)
+    if (error) { Alert.alert('Error', 'Could not delete expense.'); return }
     setShowExpSheet(false); refreshData()
   }
 
@@ -213,17 +212,17 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
     if (!user || carryItems.size === 0) return
     const now = new Date().toISOString()
     const items = uniquePrevExpenses.filter(t => carryItems.has(t.id))
-    for (const t of items) {
-      await supabase.from('transactions').insert({
-        user_id: user.id, amount: t.amount, category: t.category,
-        type: 'expense' as const, note: t.note, date: now,
-      })
-    }
+    const rows = items.map(t => ({
+      user_id: user.id, amount: t.amount, category: t.category,
+      type: 'expense' as const, note: t.note, date: now,
+    }))
+    const { error } = await supabase.from('transactions').insert(rows)
+    if (error) { Alert.alert('Error', 'Could not carry forward expenses.'); return }
     setCarryItems(new Set())
     refreshData()
   }
 
-  const snapshots = getMonthlySnapshots(transactions, profile?.monthly_income)
+  const snapshots = getMonthlySnapshots(transactions, incomeOverride ?? profile?.monthly_income)
 
   // Onboarding expense suggestions — show when no real expenses this month
   const onboardingSuggestions = (thisMonthExpenses.length === 0 && profile) ? [
@@ -236,12 +235,12 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
     const { data: { user } } = await supabase.auth.getUser()
     if (!user || onboardingSuggestions.length === 0) return
     const now = new Date().toISOString()
-    for (const item of onboardingSuggestions) {
-      await supabase.from('transactions').insert({
-        user_id: user.id, amount: item.amount, category: item.category,
-        type: 'expense' as const, note: item.note, date: now,
-      })
-    }
+    const rows = onboardingSuggestions.map(item => ({
+      user_id: user.id, amount: item.amount, category: item.category,
+      type: 'expense' as const, note: item.note, date: now,
+    }))
+    const { error } = await supabase.from('transactions').insert(rows)
+    if (error) { Alert.alert('Error', 'Could not add expenses.'); return }
     refreshData()
   }
 
@@ -362,7 +361,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
               <Text style={s.cardTitle}>AI Financial Report</Text>
             </View>
             <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); forceRefreshReport() }}
+              onPress={() => refreshData()}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               activeOpacity={0.6}
               style={{ padding: 4 }}
@@ -379,18 +378,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
               </View>
             )}
           </View>
-
-          {reportStale && !reportLoading && aiReport && (
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); forceRefreshReport() }}
-              activeOpacity={0.7}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 }}
-            >
-              <Text style={{ fontSize: 13 }}>💡</Text>
-              <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: '#92400E', flex: 1 }}>Your data has changed — tap to refresh report</Text>
-              <Text style={{ fontSize: 12, color: '#92400E' }}>🔄</Text>
-            </TouchableOpacity>
-          )}
 
           {aiReport ? (
             <>
