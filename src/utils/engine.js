@@ -526,6 +526,24 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     incomeType: profile?.income_type,
   })
 
+  // ─── Blueprint Hint — actionable one-liner for the budget card ──
+  const _needsGap = Math.round(flow.needsPct - budget.needsTarget)
+  const _wantsGap = Math.round(flow.wantsPct - budget.wantsTarget)
+  const _savingsGap = Math.round(budget.savingsTarget - flow.savingsPct)
+  let blueprintHint = ''
+  if (flow.income <= 0) {
+    blueprintHint = 'Add income to see your budget split'
+  } else if (_savingsGap > 0 && _wantsGap > 0) {
+    blueprintHint = `Trim lifestyle ${_wantsGap}% → scope to invest more`
+  } else if (_needsGap > 5) {
+    blueprintHint = `Essentials up ${_needsGap}% — look for cuts`
+  } else if (_savingsGap > 0) {
+    blueprintHint = `${_savingsGap}% below savings goal — room to grow`
+  } else {
+    blueprintHint = 'Well balanced this month ✓'
+  }
+  budget.blueprintHint = blueprintHint
+
   // Insights (after budget so thresholds are adaptive)
   const allInsights = generateInsights({ flow, goals, profile, assets, emergencyMonths, goalCalcs, budget })
   const topInsights = allInsights.slice(0, 2)

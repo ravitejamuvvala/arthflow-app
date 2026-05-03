@@ -68,7 +68,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderLeftWidth: 4,
-    padding: 16,
+    padding: 14,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOpacity: 0.03,
@@ -86,7 +86,7 @@ const s = StyleSheet.create({
     marginRight: 6,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1.2,
     color: '#9CA3AF',
@@ -98,12 +98,12 @@ const s = StyleSheet.create({
     marginBottom: 3,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#6B7280',
     marginBottom: 6,
   },
   impact: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#374151',
     marginBottom: 10,
   },

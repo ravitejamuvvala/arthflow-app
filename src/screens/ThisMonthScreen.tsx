@@ -312,18 +312,18 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
       {/* ── Blueprint (compact) ──────────────────────────── */}
       <View style={s.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-          <Text style={s.cardTitle}>Money Blueprint</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <Text style={s.cardTitle}>{new Date().toLocaleString('default', { month: 'long' })} Blueprint</Text>
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
         </View>
-        {/* Ideal vs Actual allocation row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 }}>
-          <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>
-            Ideal {budget.needsTarget} · {budget.wantsTarget} · {budget.savingsTarget}
-          </Text>
-          <Text style={{ fontSize: 12, color: TXT3 }}>→</Text>
-          <Text style={{ fontSize: 12, color: TXT1, fontFamily: 'Manrope_700Bold' }}>
+        <Text style={{ fontSize: 13, color: TXT3, fontFamily: 'Manrope_400Regular', marginBottom: 6 }}>{budget.rationale}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 6 }}>
+          <Text style={{ fontSize: 13, color: TXT1, fontFamily: 'Manrope_700Bold' }}>
             Yours {flow.needsPct} · {flow.wantsPct} · {flow.savingsPct}
+          </Text>
+          <Text style={{ fontSize: 13, color: TXT3 }}>—</Text>
+          <Text style={{ fontSize: 13, color: BLUE, fontFamily: 'Manrope_400Regular' }}>
+            {budget.blueprintHint}
           </Text>
         </View>
         {[
@@ -341,7 +341,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
             ? (fillPct >= 100 ? 'On track' : fillPct >= 70 ? 'Almost there' : 'Needs work')
             : (fillPct > 100 ? `Overspent ${fmtInr(overAmount)}` : fillPct > 85 ? 'Almost full' : 'On track')
           return (
-            <View key={row.label} style={{ marginBottom: 14 }}>
+            <View key={row.label} style={{ marginBottom: 18 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 15 }}>{row.emoji}</Text>
@@ -356,10 +356,10 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
               </View>
               {/* Amount row: actual vs budget */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 15, color: TXT1 }}>
+                <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 16, color: TXT1 }}>
                   {fmtInr(row.amount)} <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 14, color: TXT2 }}>{isWealth ? 'saved' : 'spent'}</Text>
                 </Text>
-                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: TXT3 }}>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 14, color: TXT3 }}>
                   of {fmtInr(budgetAmount)} {isWealth ? 'target' : 'budget'}
                 </Text>
               </View>
@@ -373,10 +373,10 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
       {/* ── Expenses by Category ─────────────────────────── */}
       <View style={s.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <Text style={s.cardTitle}>Expenses</Text>
           <TouchableOpacity onPress={() => openAdd()} activeOpacity={0.7}>
-            <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 12, color: BLUE }}>+ Add</Text>
+            <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 13, color: BLUE }}>+ Add</Text>
           </TouchableOpacity>
         </View>
 
@@ -457,7 +457,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           const visible = showAllExpenses ? sorted : sorted.slice(0, VISIBLE_COUNT)
           const hasMore = sorted.length > VISIBLE_COUNT
           return (
-          <View style={{ marginTop: 16 }}>
+          <View style={{ marginTop: 12 }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: TXT2, fontFamily: 'Manrope_700Bold', marginBottom: 8 }}>RECENT — tap to edit</Text>
               {visible.map(t => (
                 <TouchableOpacity key={t.id} style={s.txRow} onPress={() => openEdit(t)} activeOpacity={0.6}>
@@ -539,7 +539,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
 
 
-      <View style={{ height: 20 }} />
       </ScrollView>
 
       {/* ── Expense Sheet ────────────────────────────────── */}
@@ -662,7 +661,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 // ─── Styles ─────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   center: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
 
   appBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingVertical: 4, paddingHorizontal: 20 },
@@ -670,11 +669,11 @@ const s = StyleSheet.create({
   brandText: { fontSize: 17, fontWeight: '700', color: '#1A1A2E', letterSpacing: 3, fontFamily: 'NotoSerif_700Bold' },
 
   // Hero
-  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
+  heroCard: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 16, overflow: 'hidden', position: 'relative', backgroundColor: '#0B1B4A' },
   heroGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -30 },
   heroWatermark: { position: 'absolute', right: -10, bottom: -10, opacity: 0.04, zIndex: 0 },
   heroContent: { position: 'relative', zIndex: 1 },
-  heroMonth: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
+  heroMonth: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, fontFamily: 'Manrope_700Bold' },
   heroGreeting: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.4, lineHeight: 30, marginTop: 2, fontFamily: 'Manrope_700Bold' },
   heroAiBadge: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, minWidth: 40 },
 
@@ -682,30 +681,30 @@ const s = StyleSheet.create({
   statusText: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize', fontFamily: 'Manrope_700Bold' },
   statusMessage: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 6, fontFamily: 'Manrope_400Regular' },
 
-  flowRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  flowRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
   flowBox: { flex: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.1)' },
   flowLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Manrope_700Bold' },
   flowValue: { fontSize: 17, fontWeight: '800', color: '#fff', fontFamily: 'Manrope_700Bold' },
 
   // Card
-  card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
+  card: { backgroundColor: '#fff', borderRadius: 20, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: BORDER },
 
-  cardTitle: { fontSize: 16, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  cardTitle: { fontSize: 17, fontWeight: '800', color: TXT1, fontFamily: 'Manrope_700Bold' },
 
   // Blueprint
   bpBadge: { backgroundColor: BLUE_L, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   bpBadgeText: { fontSize: 13, fontWeight: '800', color: BLUE, fontFamily: 'Manrope_700Bold' },
   bpLabel: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   bpPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  bpPillText: { fontSize: 13, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
+  bpPillText: { fontSize: 14, fontWeight: '800', fontFamily: 'Manrope_700Bold' },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, position: 'relative', marginBottom: 2 },
   barFill: { position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3 },
   // Transactions
   txRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, marginBottom: 8, backgroundColor: BG_SEC, borderRadius: 14 },
   txLeft: { flex: 1 },
-  txNote: { fontSize: 15, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
+  txNote: { fontSize: 16, fontWeight: '700', color: TXT1, fontFamily: 'Manrope_700Bold' },
   txDate: { fontSize: 13, color: TXT3, marginTop: 1, fontFamily: 'Manrope_400Regular' },
-  txAmount: { fontSize: 16, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
+  txAmount: { fontSize: 17, fontWeight: '800', color: RED, fontFamily: 'Manrope_700Bold' },
 
   // Trend
   trendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
@@ -716,10 +715,10 @@ const s = StyleSheet.create({
   trendBarTrack: { height: 6, borderRadius: 3, backgroundColor: BG_SEC, overflow: 'hidden', marginBottom: 4 },
   trendBarFill: { height: 6, borderRadius: 3 },
   trendStats: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  trendStatText: { fontSize: 13, fontFamily: 'Manrope_400Regular', color: TXT3 },
-  trendSaved: { fontSize: 12, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
+  trendStatText: { fontSize: 14, fontFamily: 'Manrope_400Regular', color: TXT3 },
+  trendSaved: { fontSize: 13, fontWeight: '700', fontFamily: 'Manrope_700Bold' },
   trendInsight: { marginTop: 10, backgroundColor: BG_SEC, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  trendInsightText: { fontSize: 13, fontWeight: '600', color: BLUE, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
+  trendInsightText: { fontSize: 14, fontWeight: '600', color: BLUE, lineHeight: 20, fontFamily: 'Manrope_400Regular' },
 
   // Sheets
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.65)', justifyContent: 'flex-end' },
