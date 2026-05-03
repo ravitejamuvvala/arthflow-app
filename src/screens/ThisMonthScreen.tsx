@@ -153,7 +153,8 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   const saveExpense = async () => {
     const amt = Number(expAmount)
     if (!expDesc.trim() || amt <= 0) return
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user) { Alert.alert('Session expired', 'Please sign in again.'); return }
     const payload = {
       user_id: user.id, amount: amt, category: CAT_CONFIG[expCat].label,
@@ -208,7 +209,8 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   ) as { id: string; note: string; category: string; amount: number }[]
 
   const carryForward = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user || carryItems.size === 0) return
     const now = new Date().toISOString()
     const items = uniquePrevExpenses.filter(t => carryItems.has(t.id))
@@ -232,7 +234,8 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
   ] : []
 
   const addOnboardingExpenses = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user || onboardingSuggestions.length === 0) return
     const now = new Date().toISOString()
     const rows = onboardingSuggestions.map(item => ({
@@ -306,7 +309,6 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           {snapshots.map((snap, i) => {
             const isCurrent = i === snapshots.length - 1
             const spentPct = snap.income > 0 ? Math.min(100, Math.round((snap.spent / snap.income) * 100)) : 0
-            const prev = i > 0 ? snapshots[i - 1] : null
             return (
               <View key={i} style={[s.trendRow, isCurrent && s.trendRowCurrent]}>
                 <View style={s.trendMonthCol}>

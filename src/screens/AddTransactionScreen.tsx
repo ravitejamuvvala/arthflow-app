@@ -54,7 +54,8 @@ export default function AddTransactionScreen({ onSuccess, onCancel }: Props) {
     }
 
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
 
     if (!user) {
       setLoading(false)

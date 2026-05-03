@@ -34,7 +34,6 @@ const ORANGE_L = '#FEF3C7'
 const RED      = '#EF4444'
 const TEAL     = '#14B8A6'
 const TEAL_L   = '#CCFBF1'
-const INDIGO   = '#6366F1'
 const TXT1     = '#111827'
 const TXT2     = '#6B7280'
 const TXT3     = '#9CA3AF'
@@ -162,7 +161,8 @@ export default function GoalsScreen() {
     if (!fName.trim()) { Alert.alert('Enter goal name'); return }
     if (!fTarget || Number(stripCommas(fTarget)) <= 0) { Alert.alert('Enter valid target amount'); return }
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user) return
 
     const payload = {

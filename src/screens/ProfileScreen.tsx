@@ -169,7 +169,8 @@ export default function ProfileScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete Everything & Restart', style: 'destructive', onPress: async () => {
-          const { data: { user } } = await supabase.auth.getUser()
+          const { data: { session: sess } } = await supabase.auth.getSession()
+          const user = sess?.user
           if (!user) return
           // Delete all user data from Supabase
           await Promise.all([
@@ -427,7 +428,7 @@ export default function ProfileScreen() {
                   const val = Number(stripCommas(t)) || 0
                   setAssets(prev => ({ ...prev, termCoverAmount: val }))
                 }}
-                onBlur={() => updateAssets(assets)}
+                onBlur={() => setAssets(prev => { updateAssets(prev); return prev })}
                 placeholder="e.g. 1,00,00,000"
                 placeholderTextColor={TXT3}
                 keyboardType="numeric"
@@ -468,7 +469,7 @@ export default function ProfileScreen() {
                   const val = Number(stripCommas(t)) || 0
                   setAssets(prev => ({ ...prev, healthCoverAmount: val }))
                 }}
-                onBlur={() => updateAssets(assets)}
+                onBlur={() => setAssets(prev => { updateAssets(prev); return prev })}
                 placeholder="e.g. 10,00,000"
                 placeholderTextColor={TXT3}
                 keyboardType="numeric"
@@ -694,7 +695,8 @@ export default function ProfileScreen() {
             </ScrollView>
 
             <TouchableOpacity style={st.editSaveBtn} activeOpacity={0.85} onPress={async () => {
-              const { data: { user } } = await supabase.auth.getUser()
+              const { data: { session: sess } } = await supabase.auth.getSession()
+              const user = sess?.user
               if (user) {
                 const updates: any = {}
                 const fullName = [editName.trim(), editLastName.trim()].filter(Boolean).join(' ')
@@ -714,7 +716,8 @@ export default function ProfileScreen() {
                 if (editPhone.trim()) updates.phone = editPhone.trim()
                 if (editEmail.trim()) updates.email = editEmail.trim()
                 if (Object.keys(updates).length > 0) {
-                  await supabase.from('profiles').update(updates).eq('id', user.id)
+                  const { error } = await supabase.from('profiles').update(updates).eq('id', user.id)
+                  if (error) { Alert.alert('Error', 'Could not save profile. Please try again.'); return }
                   // Clear cached AI report so Coach/Home screens use fresh profile data
                   await AsyncStorage.removeItem('@arthflow_ai_report')
                 }

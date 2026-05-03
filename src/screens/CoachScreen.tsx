@@ -154,7 +154,7 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 
   // --- Lifestyle ---
   if (lc.includes('lifestyle') || lc.includes('dining') || lc.includes('shopping') || lc.includes('creep')) {
-    return `${name}, lifestyle spending: ${fmtInr(lifestyle)}/month (${lifePct}% of income).\n\nThe 50-30-20 rule allows 30% max = ${fmtInr(limit30)}.\n\n${lifestyle > limit30 ? `You're ${fmtInr(overLifestyle)} over. Try:\n• Set a weekly dining budget\n• Unsubscribe unused services\n• Use the 48-hour rule for impulse buys` : 'You\'re within the 30% limit — well done! Keep it steady.'}`
+    return `${name}, lifestyle spending: ${fmtInr(lifestyle)}/month (${lifePct}% of income).\n\nYour adaptive budget allows ${budgetTargets?.wantsTarget ?? 30}% = ${fmtInr(lifestyleLimit)}.\n\n${lifestyle > lifestyleLimit ? `You're ${fmtInr(overLifestyle)} over. Try:\n• Set a weekly dining budget\n• Unsubscribe unused services\n• Use the 48-hour rule for impulse buys` : 'You\'re within your budget — well done! Keep it steady.'}`
   }
 
   // --- How am I doing / overall ---

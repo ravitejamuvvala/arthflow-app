@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context'
 import ArthFlowLogo from './src/components/ArthFlowLogo'
 import { supabase } from './src/lib/supabase'
@@ -21,7 +21,6 @@ const clearLocalData = async (preserveAssets = false) => {
 }
 
 import { DataProvider } from './src/lib/DataContext'
-import AddTransactionScreen from './src/screens/AddTransactionScreen'
 import CoachScreen from './src/screens/CoachScreen'
 import GoalsScreen from './src/screens/GoalsScreen'
 import LoginScreen from './src/screens/LoginScreen'
@@ -36,7 +35,6 @@ const TOP_INSET = initialWindowMetrics?.insets.top ?? 0
 export default function App() {
   const [session, setSession] = useState(null)
   const [activeTab, setActiveTab] = useState('home')
-  const [showAddTransaction, setShowAddTransaction] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [isOnboarded, setIsOnboarded] = useState(null) // null = loading, true/false = checked
 
@@ -182,13 +180,6 @@ export default function App() {
           </TouchableOpacity>
         ))}
       </View>
-
-      <Modal visible={showAddTransaction} animationType="slide" presentationStyle="pageSheet">
-        <AddTransactionScreen
-          onSuccess={() => { setShowAddTransaction(false) }}
-          onCancel={() => setShowAddTransaction(false)}
-        />
-      </Modal>
     </SafeAreaView>
     </DataProvider>
   )

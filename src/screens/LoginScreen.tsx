@@ -14,7 +14,7 @@ import ArthFlowLogo from '../components/ArthFlowLogo'
 import { supabase } from '../lib/supabase'
 import SignUpScreen from './SignUpScreen'
 
-export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
+export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)

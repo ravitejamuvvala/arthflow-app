@@ -45,7 +45,8 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
   const aiReportLockRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user) { setLoading(false); return null }
 
     const fourMonthsAgo = new Date()
@@ -125,7 +126,7 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
   // ─── Centralized AI Report ─────────────────────────────────────────
   const loadAiReport = useCallback(async (eng: any, prof: Profile | null, txs: Transaction[], gls: Goal[], ast: any, override: number | null) => {
     if (!eng?.flow || !prof) return
-    if (aiReportLockRef.current) { console.log('[AI] skipped (already loading)'); return }
+    if (aiReportLockRef.current) { return }
     aiReportLockRef.current = true
 
     const flow = eng.flow
@@ -162,7 +163,6 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
       const spent = flow?.totalSpent ?? 0
       const goalSummary = gls.map((g: Goal) => `${g.name}:${g.target_amount}`).join(', ')
       const assetSummary = ast ? Object.entries(ast).filter(([,v]) => (v as number) > 0).map(([k,v]) => `${k}:${v}`).join(', ') : 'none'
-      console.log('[AI] Calling backend — income:', income, 'spent:', spent, 'goals:', goalSummary, 'assets:', assetSummary, 'forceRefresh:', skipCache)
       const report = await fetchAiReport({
         forceRefresh: skipCache,
         profile: prof,
@@ -199,7 +199,6 @@ export function DataProvider({ children, session }: { children: React.ReactNode;
           avgGoalFunded: eng.avgGoalFunded,
         },
       })
-      console.log('[AI] Got report, score:', report?.score)
       setAiReport(report)
       await AsyncStorage.setItem(AI_REPORT_KEY, JSON.stringify({ report, ts: Date.now() }))
     } catch (e) {

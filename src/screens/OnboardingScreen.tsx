@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
 import {
+  Alert,
   Animated,
   Dimensions,
   KeyboardAvoidingView,
@@ -224,11 +225,12 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
   const handleFinish = async () => {
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session: sess } } = await supabase.auth.getSession()
+    const user = sess?.user
     if (!user) { setSaving(false); return }
 
     // Upsert profile with onboarding data
-    await supabase.from('profiles').upsert({
+    const { error: profileError } = await supabase.from('profiles').upsert({
       id: user.id,
       full_name: name || 'Friend',
       monthly_income: income,
@@ -239,6 +241,12 @@ export default function OnboardingScreen({ onComplete }: Props) {
       is_onboarded: true,
       age: age,
     })
+
+    if (profileError) {
+      setSaving(false)
+      Alert.alert('Error', 'Could not save your profile. Please try again.')
+      return
+    }
 
     // Also persist onboarding flag locally as a reliable fallback
     await AsyncStorage.setItem(`@arthflow_onboarded_${user.id}`, 'true')
@@ -255,7 +263,11 @@ export default function OnboardingScreen({ onComplete }: Props) {
           target_date: `${new Date().getFullYear() + 5}-12-31`,
         }
       })
-      await supabase.from('goals').insert(goalRows)
+      const { error: goalError } = await supabase.from('goals').insert(goalRows)
+      if (goalError) {
+        // Profile saved but goals failed — continue anyway, user can add goals manually
+        console.warn('Goals insert failed:', goalError.message)
+      }
     }
 
     setSaving(false)
