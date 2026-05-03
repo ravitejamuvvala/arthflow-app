@@ -319,13 +319,7 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
   const scoreLabel = getScoreLabel(score)
   const statusFromScore = getStatusFromScore(score)
 
-  // Insights (top 2 only)
-  const allInsights = generateInsights({ flow, goals, profile, assets, emergencyMonths, goalCalcs })
-  const topInsights = allInsights.slice(0, 2)
-
-  // Top problem + action
-  const topProblem = topInsights[0]?.type !== 'positive' ? topInsights[0]?.title : null
-  const action = topInsights[0]?.action || null
+  // Insights — deferred until after budget is computed (see below)
 
   // ─── Investment allocation (age-based, emergency-first) ──
   const equityPct = Math.min(80, 100 - (age || 25))
@@ -499,6 +493,12 @@ export function runEngine({ income, transactions, allTransactions, goals, assets
     nearestGoalYears,
     incomeType: profile?.income_type,
   })
+
+  // Insights (after budget so thresholds are adaptive)
+  const allInsights = generateInsights({ flow, goals, profile, assets, emergencyMonths, goalCalcs, budget })
+  const topInsights = allInsights.slice(0, 2)
+  const topProblem = topInsights[0]?.type !== 'positive' ? topInsights[0]?.title : null
+  const action = topInsights[0]?.action || null
 
   return {
     flow,

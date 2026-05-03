@@ -192,12 +192,13 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
   const { flow, status, topProblem, action, insights } = engineResult
   const budget = engineResult.budget
+  const savingsTargetPct = budget?.savingsTarget ?? 20
   const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0)
   const thisMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth)
   const thisMonthExpenses = thisMonthTx.filter(t => t.type === 'expense')
 
   // Previous month expenses for carry-forward
-  const prevMonthStart = new Date(); prevMonthStart.setMonth(prevMonthStart.getMonth() - 1); prevMonthStart.setDate(1); prevMonthStart.setHours(0, 0, 0, 0)
+  const prevMonthStart = new Date(); prevMonthStart.setDate(1); prevMonthStart.setMonth(prevMonthStart.getMonth() - 1); prevMonthStart.setHours(0, 0, 0, 0)
   const prevMonthExpenses = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= prevMonthStart && new Date(t.date) < startOfMonth)
   const uniquePrevExpenses = Object.values(
     prevMonthExpenses.reduce((acc: Record<string, any>, t) => {
@@ -291,7 +292,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
             </View>
             <View style={s.flowBox}>
               <Text style={s.flowLabel}>SAVED</Text>
-              <Text style={[s.flowValue, { color: flow.savingsPct >= 20 ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.9)' }]}>
+              <Text style={[s.flowValue, { color: flow.savingsPct >= savingsTargetPct ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.9)' }]}>
                 {flow.savingsPct}%
               </Text>
             </View>
@@ -316,14 +317,14 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
                 </View>
                 <View style={s.trendContent}>
                   <View style={s.trendBarTrack}>
-                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= 20 ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
+                    <View style={[s.trendBarFill, { width: `${spentPct}%`, backgroundColor: snap.savedPct >= savingsTargetPct ? GREEN : snap.savedPct >= 5 ? ORANGE : RED }]} />
                   </View>
                   <View style={s.trendStats}>
                     <Text style={s.trendStatText}>
                       <Text style={{ color: TXT1, fontFamily: 'Manrope_700Bold' }}>{fmtInr(snap.spent)}</Text>
                       <Text style={{ color: TXT3 }}> spent</Text>
                     </Text>
-                    <Text style={[s.trendSaved, { color: snap.savedPct >= 20 ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
+                    <Text style={[s.trendSaved, { color: snap.savedPct >= savingsTargetPct ? GREEN_H : snap.savedPct >= 5 ? ORANGE_H : RED }]}>
                       {snap.savedPct >= 0 ? '↑' : '↓'} {snap.savedPct}% saved
                     </Text>
                   </View>
@@ -340,7 +341,7 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
               ? `Savings up ${diff}% vs ${prev.short} — great progress! 🟢`
               : diff < -5
               ? `Spending rose ${Math.abs(diff)}% vs ${prev.short} — review lifestyle costs 🟡`
-              : `Holding steady vs ${prev.short} — aim for 20%+ savings 🔵`
+              : `Holding steady vs ${prev.short} — aim for ${savingsTargetPct}%+ savings 🔵`
             return (
               <View style={s.trendInsight}>
                 <Text style={s.trendInsightText}>{msg}</Text>
@@ -403,10 +404,10 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           ) : engineResult ? (
             <>
               <Text style={s.reportSummary}>
-                {engineResult.flow?.savingsPct >= 20
-                  ? `Saving ${engineResult.flow.savingsPct}% of income — above the 20% benchmark.`
+                {engineResult.flow?.savingsPct >= savingsTargetPct
+                  ? `Saving ${engineResult.flow.savingsPct}% of income — above the ${savingsTargetPct}% target.`
                   : engineResult.flow?.income > 0
-                    ? `Saving ${engineResult.flow?.savingsPct ?? 0}% — target is 20%. ${engineResult.emergencyMonths < 3 ? 'Emergency fund needs attention.' : ''}`
+                    ? `Saving ${engineResult.flow?.savingsPct ?? 0}% — target is ${savingsTargetPct}%. ${engineResult.emergencyMonths < 3 ? 'Emergency fund needs attention.' : ''}`
                     : 'Add income and expenses to see your analysis.'}
               </Text>
 

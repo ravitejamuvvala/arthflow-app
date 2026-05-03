@@ -82,7 +82,7 @@ export async function fetchAiReport(payload) {
       break // success
     } catch (err) {
       if (attempt === 0) {
-        console.log('[AI] First attempt failed (server may be waking up), retrying...')
+        console.warn('[AI] First attempt failed (server may be waking up), retrying...')
         await new Promise(r => setTimeout(r, 3000))
       } else {
         console.error('Network error fetching AI report:', err)

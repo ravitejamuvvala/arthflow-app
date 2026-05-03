@@ -1,18 +1,18 @@
 import React, { useCallback, useRef, useState } from 'react'
 import {
-    ActivityIndicator,
-    Animated,
-    KeyboardAvoidingView,
-    LayoutAnimation,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import ArthFlowLogo from '../components/ArthFlowLogo'
 import HealthScoreRing from '../components/HealthScoreRing'
@@ -94,9 +94,11 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 
   // Pre-computed from engine — use adaptive budget targets
   const budgetTargets = engineResult?.budget
-  const lifestyleLimit = budgetTargets ? Math.round(income * budgetTargets.wantsTarget / 100) : Math.round(income * 0.30)
+  const savingsTargetPct = budgetTargets?.savingsTarget ?? 20
+  const wantsTargetPct = budgetTargets?.wantsTarget ?? 30
+  const lifestyleLimit = Math.round(income * wantsTargetPct / 100)
   const overLifestyle = lifestyle - lifestyleLimit
-  const savingsTarget = budgetTargets ? Math.round(income * budgetTargets.savingsTarget / 100) : Math.round(income * 0.20)
+  const savingsTarget = Math.round(income * savingsTargetPct / 100)
   const savingsGap = savingsTarget - saved
   const emergencyTarget = risk?.emergencyTarget ?? totalExp * 6
   const emergencyGap = risk?.emergencyGap ?? Math.max(0, emergencyTarget - (engineResult?.flow?.income ?? 0))
@@ -113,9 +115,9 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
   // --- Savings ---
   if (lc.includes('saving') || lc.includes('save') || lc.includes('improve') || lc.includes('find saving') || lc.includes('boost')) {
     if (savingsGap > 0) {
-      return `${name}, you're saving ${fmtInr(saved)}/month (${savePct}%). Target: ${fmtInr(Math.round(income * 0.20))} (20%).\n\nHere's how to find ${fmtInr(savingsGap)} more:\n• Cut lifestyle by 10% → saves ${fmtInr(Math.round(lifestyle * 0.1))}\n• Review subscriptions → typically ₹500–1,500/month\n• Cook 2 more meals/week → saves ~₹2,000/month\n• Auto-transfer savings on payday so you don't spend it.`
+      return `${name}, you're saving ${fmtInr(saved)}/month (${savePct}%). Target: ${fmtInr(savingsTarget)} (${savingsTargetPct}%).\n\nHere's how to find ${fmtInr(savingsGap)} more:\n• Cut lifestyle by 10% → saves ${fmtInr(Math.round(lifestyle * 0.1))}\n• Review subscriptions → typically ₹500–1,500/month\n• Cook 2 more meals/week → saves ~₹2,000/month\n• Auto-transfer savings on payday so you don't spend it.`
     }
-    return `Great news, ${name}! You're saving ${savePct}% (${fmtInr(saved)}/month) — above the 20% benchmark! 🎉\n\nNext step: Consider putting surplus into systematic investments or your emergency fund.`
+    return `Great news, ${name}! You're saving ${savePct}% (${fmtInr(saved)}/month) — above the ${savingsTargetPct}% target! 🎉\n\nNext step: Consider putting surplus into systematic investments or your emergency fund.`
   }
 
   // --- Emergency fund ---
@@ -159,10 +161,10 @@ function generateAIReply(msg: string, engineResult: any, goals: Goal[], profile:
 
   // --- How am I doing / overall ---
   if (lc.includes('how am i doing') || lc.includes('overall') || lc.includes('score') || lc.includes('snapshot'))
-    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n📈 Health Score: ${score}/100\n\n${savePct >= 20 ? "✅ Above 20% benchmark — solid!" : "⚠️ Below 20% target — let's trim lifestyle spending."}\n\nTop action: ${savePct < 20 ? 'Reduce lifestyle by 10% to hit 20% savings.' : 'Review your investment allocation and insurance coverage.'}`
+    return `${name}'s financial snapshot:\n\n💰 Income: ${fmtInr(income)}/month\n🛒 Spending: ${fmtInr(totalExp)} (${income > 0 ? Math.round((totalExp / income) * 100) : 0}%)\n📊 Savings: ${fmtInr(saved)}/month (${savePct}%)\n📈 Health Score: ${score}/100\n\n${savePct >= savingsTargetPct ? `✅ Above ${savingsTargetPct}% target — solid!` : `⚠️ Below ${savingsTargetPct}% target — let's trim lifestyle spending.`}\n\nTop action: ${savePct < savingsTargetPct ? `Reduce lifestyle by 10% to hit ${savingsTargetPct}% savings.` : 'Review your investment allocation and insurance coverage.'}`
 
   // --- Fallback ---
-  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= 20 ? '✅' : '(target: 20%)'}\n• Lifestyle: ${lifePct}% of income ${lifePct <= 30 ? '✅' : '(target: ≤30%)'}\n• Goals: ${goals.length} active\n• Health Score: ${score}/100\n\nTop priority: ${savePct < 20 ? `Find ${fmtInr(savingsGap)} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent with your monthly contributions.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
+  return `${name}, based on your finances:\n\n• Savings rate: ${savePct}% ${savePct >= savingsTargetPct ? '✅' : `(target: ${savingsTargetPct}%)`}\n• Lifestyle: ${lifePct}% of income ${lifePct <= wantsTargetPct ? '✅' : `(target: ≤${wantsTargetPct}%)`}\n• Goals: ${goals.length} active\n• Health Score: ${score}/100\n\nTop priority: ${savePct < savingsTargetPct ? `Find ${fmtInr(savingsGap)} more in savings by trimming lifestyle.` : goals.length === 0 ? 'Set a financial goal in the Plan tab.' : 'Stay consistent with your monthly contributions.'}\n\nAsk me about savings, investing, insurance, or tax planning!`
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -769,7 +771,7 @@ export default function CoachScreen({ showReport }: { showReport?: boolean }) {
                     <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>Based on your age & income</Text>
                   </View>
                 </View>
-                {appReport.protectionChecklist.map((p: any, i: number) => {
+                {appReport?.protectionChecklist.map((p: any, i: number) => {
                   const pStatusColor = p.status === 'covered' ? GREEN : p.status === 'partial' ? ORANGE : RED
                   const pStatusBg = p.status === 'covered' ? GREEN_L : p.status === 'partial' ? ORANGE_L : RED_L
                   const pStatusLabel = p.status === 'covered' ? '✅ Covered' : p.status === 'partial' ? '⚠️ Partial' : '❌ Missing'

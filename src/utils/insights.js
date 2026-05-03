@@ -3,12 +3,15 @@
 
 import { fmtInr } from './calculations'
 
-export function generateInsights({ flow, goals, profile, assets, emergencyMonths: engineEmergencyMonths, goalCalcs: engineGoalCalcs }) {
+export function generateInsights({ flow, goals, profile, assets, emergencyMonths: engineEmergencyMonths, goalCalcs: engineGoalCalcs, budget }) {
   const age = profile?.age ?? 0
+  const savingsTarget = budget?.savingsTarget ?? 20
+  const wantsTarget = budget?.wantsTarget ?? 30
+  const spendingThreshold = 100 - savingsTarget // spending alarm when above this
   const out = []
 
   // ── 1. Overspending check ────────────────────────────────
-  if (flow.totalSpent > flow.income * 0.7 && flow.income > 0) {
+  if (flow.totalSpent > flow.income * (spendingThreshold / 100) && flow.income > 0) {
     out.push({
       type: 'warning', priority: 1,
       title: 'Spending is a bit high this month',
@@ -18,19 +21,19 @@ export function generateInsights({ flow, goals, profile, assets, emergencyMonths
   }
 
   // ── 2. Low savings ───────────────────────────────────────
-  if (flow.savingsPct < 20 && flow.income > 0) {
-    const gap = Math.round(flow.income * 0.20 - flow.savings)
+  if (flow.savingsPct < savingsTarget && flow.income > 0) {
+    const gap = Math.round(flow.income * (savingsTarget / 100) - flow.savings)
     out.push({
       type: 'warning', priority: 1,
       title: `Let's improve your savings this month`,
-      message: `You're saving ${flow.savingsPct}% — finding ${fmtInr(gap)} more would hit the 20% target.`,
+      message: `You're saving ${flow.savingsPct}% — finding ${fmtInr(gap)} more would hit the ${savingsTarget}% target.`,
       action: 'Find savings',
     })
-  } else if (flow.savingsPct >= 25 && flow.income > 0) {
+  } else if (flow.savingsPct >= savingsTarget + 5 && flow.income > 0) {
     out.push({
       type: 'positive', priority: 5,
       title: `Great savings rate — ${flow.savingsPct}%! 🎉`,
-      message: `You're well above the 20% benchmark. Consider investing the surplus.`,
+      message: `You're well above the ${savingsTarget}% target. Consider investing the surplus.`,
       action: 'Invest surplus',
     })
   }
@@ -66,11 +69,11 @@ export function generateInsights({ flow, goals, profile, assets, emergencyMonths
   })
 
   // ── 5. Lifestyle creep ───────────────────────────────────
-  if (flow.wantsPct > 30 && flow.income > 0) {
+  if (flow.wantsPct > wantsTarget && flow.income > 0) {
     out.push({
       type: 'warning', priority: 2,
       title: 'Lifestyle spending is a bit high',
-      message: `${flow.wantsPct}% on lifestyle (target: 30%). Small cuts here have the biggest impact.`,
+      message: `${flow.wantsPct}% on lifestyle (target: ${wantsTarget}%). Small cuts here have the biggest impact.`,
       action: 'Reduce lifestyle',
     })
   }

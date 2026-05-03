@@ -173,7 +173,7 @@ export default function ProfileScreen() {
           const user = sess?.user
           if (!user) return
           // Delete all user data from Supabase
-          await Promise.all([
+          const results = await Promise.all([
             supabase.from('transactions').delete().eq('user_id', user.id),
             supabase.from('goals').delete().eq('user_id', user.id),
             supabase.from('profiles').update({
@@ -190,6 +190,11 @@ export default function ProfileScreen() {
               email: null,
             }).eq('id', user.id),
           ])
+          const failed = results.filter(r => r.error)
+          if (failed.length > 0) {
+            Alert.alert('Error', 'Some data could not be deleted. Please try again.')
+            return
+          }
           // Clear ALL local caches (same as sign-out)
           const keys = await AsyncStorage.getAllKeys()
           const arthKeys = keys.filter(k => k.startsWith('@arthflow_'))

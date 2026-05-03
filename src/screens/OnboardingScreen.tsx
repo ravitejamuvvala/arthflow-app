@@ -267,6 +267,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
       if (goalError) {
         // Profile saved but goals failed — continue anyway, user can add goals manually
         console.warn('Goals insert failed:', goalError.message)
+        Alert.alert('Note', 'Goals could not be saved. You can add them manually in the Goals tab.')
       }
     }
 
