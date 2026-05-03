@@ -419,9 +419,19 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
 
       {/* ── Blueprint (compact) ──────────────────────────── */}
       <View style={s.card}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
           <Text style={s.cardTitle}>Money Blueprint</Text>
           <View style={s.bpBadge}><Text style={s.bpBadgeText}>{budget.label}</Text></View>
+        </View>
+        {/* Ideal vs Actual allocation row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 6 }}>
+          <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>
+            Ideal {budget.needsTarget} · {budget.wantsTarget} · {budget.savingsTarget}
+          </Text>
+          <Text style={{ fontSize: 12, color: TXT3 }}>→</Text>
+          <Text style={{ fontSize: 12, color: TXT1, fontFamily: 'Manrope_700Bold' }}>
+            Yours {flow.needsPct} · {flow.wantsPct} · {flow.savingsPct}
+          </Text>
         </View>
         {[
           { label: 'Essentials', sub: 'Rent, groceries, EMIs', emoji: '🏠', actual: flow.needsPct, target: budget.needsTarget, amount: flow.catTotals.essentials + flow.catTotals.emis, good: flow.needsPct <= budget.needsTarget, okColor: BLUE, badColor: RED },
@@ -431,36 +441,36 @@ export default function ThisMonthScreen({ onNavigateCoach, onNavigatePlan }: { o
           const barColor = row.good ? row.okColor : row.badColor
           const budgetAmount = Math.round(flow.income * row.target / 100)
           const isWealth = row.label === 'Wealth'
-          const overUnder = isWealth
-            ? (row.amount >= budgetAmount ? `${fmtInr(row.amount - budgetAmount)} above` : `${fmtInr(budgetAmount - row.amount)} below`)
-            : (row.amount <= budgetAmount ? `${fmtInr(budgetAmount - row.amount)} left` : `${fmtInr(row.amount - budgetAmount)} over`)
+          const fillPct = budgetAmount > 0 ? Math.round((row.amount / budgetAmount) * 100) : 0
+          // Human-readable status label
+          const statusLabel = isWealth
+            ? (fillPct >= 100 ? 'On track' : fillPct >= 70 ? 'Almost there' : 'Needs work')
+            : (fillPct <= 85 ? 'On track' : fillPct <= 100 ? 'Almost full' : 'Over budget')
           return (
             <View key={row.label} style={{ marginBottom: 14 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 13 }}>{row.emoji}</Text>
+                  <Text style={{ fontSize: 15 }}>{row.emoji}</Text>
                   <View>
                     <Text style={s.bpLabel}>{row.label}</Text>
-                    <Text style={{ fontSize: 12, color: TXT3, fontFamily: 'Manrope_400Regular' }}>{row.sub}</Text>
+                    <Text style={{ fontSize: 13, color: TXT2, fontFamily: 'Manrope_400Regular' }}>{row.sub}</Text>
                   </View>
                 </View>
                 <View style={[s.bpPill, { backgroundColor: barColor + '18' }]}>
-                  <Text style={[s.bpPillText, { color: barColor }]}>{row.actual}%{row.good ? ' ✓' : ''}</Text>
+                  <Text style={[s.bpPillText, { color: barColor }]}>{statusLabel}</Text>
                 </View>
               </View>
               {/* Amount row: actual vs budget */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 15, color: TXT1 }}>{fmtInr(row.amount)}</Text>
-                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: row.good ? GREEN_H : RED }}>
-                  {isWealth ? (row.good ? '✓ ' : '') : ''}{overUnder} · limit {fmtInr(budgetAmount)}
+                <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 15, color: TXT1 }}>
+                  {fmtInr(row.amount)} <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 14, color: TXT2 }}>{isWealth ? 'saved' : 'spent'}</Text>
+                </Text>
+                <Text style={{ fontFamily: 'Manrope_400Regular', fontSize: 13, color: TXT3 }}>
+                  of {fmtInr(budgetAmount)} {isWealth ? 'target' : 'budget'}
                 </Text>
               </View>
               <View style={s.barTrack}>
-                <View style={[s.barFill, { width: `${Math.min(100, row.actual)}%`, backgroundColor: barColor }]} />
-                <View style={[s.barMarker, { left: `${Math.min(97, row.target)}%` }]}>
-                  <View style={s.barMarkerLine} />
-                  <Text style={s.barMarkerLabel}>{row.target}%</Text>
-                </View>
+                <View style={[s.barFill, { width: `${Math.min(100, fillPct)}%`, backgroundColor: barColor }]} />
               </View>
             </View>
           )
